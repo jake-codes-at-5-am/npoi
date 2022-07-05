@@ -1,0 +1,90 @@
+# ASP.NET Core (.NET Framework)
+# Build and test ASP.NET Core projects targeting the full .NET Framework.
+# Add steps that publish symbols, save build artifacts, and more:
+# https://docs.microsoft.com/azure/devops/pipelines/languages/dotnet-core
+
+trigger:
+- master
+pr:
+  - master
+
+pool:
+  vmImage: 'windows-2019'
+
+variables:
+  buildPlatform: 'Any CPU'
+  buildConfiguration: 'Release'
+
+steps:
+- checkout: self
+  displayName: Checkout NPOI git repository
+  lfs: true
+
+- task: UseDotNet@2
+  displayName: "Install .NET Core"
+  inputs:
+    packageType: 'sdk'
+    version: '3.x'
+
+- task: NuGetToolInstaller@1
+  displayName: Install NuGet Manager
+  inputs:
+    versionSpec:
+    checkLatest: true
+
+- task: NuGetCommand@2
+  displayName: Restore Solution NuGet Packages
+  inputs:
+    command: 'restore'
+    restoreSolution: 'npoi/solution/NPOI.Test.sln'
+    feedsToUse: 'select'
+    vstsFeed: 'c5505eb6-2462-4086-9424-a3a11f5fd76b/37c3a301-e2ee-45e9-982c-57c7353a5ca3'
+    verbosityRestore: 'Normal'
+
+- task: DotNetCoreCLI@2
+  displayName: Build NPOI Solution
+  inputs:
+    command: 'build'
+    projects: 'npoi/solution/NPOI.Test.sln'
+    arguments: '--configuration $(buildConfiguration) --no-restore --verbosity normal'
+
+- task: DotNetCoreCLI@2
+  displayName: (Framework)Execute Unit Tests
+  inputs:
+    command: 'test'
+    projects: 'npoi/testcases/main/NPOI.TestCases.csproj'
+    arguments: '--configuration "$(buildConfiguration)" -f "net452" --verbosity n --no-build'
+    testRunTitle: '(Framework)Execute Unit Tests'
+  condition: succeededOrFailed()
+
+- task: DotNetCoreCLI@2
+  displayName: (Framework)Execute Unit Tests
+  inputs:
+    command: 'test'
+    projects: 'npoi/testcases/ooxml/NPOI.OOXML.TestCases.csproj'
+    arguments: '--configuration "$(buildConfiguration)" -f "net452" --verbosity n --no-build'
+    testRunTitle: '(Framework)Execute Unit Tests'
+  condition: succeededOrFailed()
+
+- task: DotNetCoreCLI@2
+  displayName: (Framework)Execute Unit Tests
+  inputs:
+    command: 'test'
+    projects: 'npoi/testcases/openxml4net/NPOI.OOXML4Net.Testcases.csproj'
+    arguments: '--configuration "$(buildConfiguration)" -f "net452" --verbosity n --no-build'
+    testRunTitle: '(Framework)Execute Unit Tests'
+  condition: succeededOrFailed()
+
+- task: PublishCodeCoverageResults@1
+  displayName: 'Publish code coverage report'
+  inputs:
+    codeCoverageTool: 'Cobertura'
+    summaryFileLocation: '$(Agent.TempDirectory)/**/coverage.cobertura.xml'
+  condition: always()
+  
+- task: PublishTestResults@2
+  displayName: 'Publish test result'
+  inputs:
+    testRunner: VSTest
+    testResultsFiles: '**/*.trx'
+  condition: always()
