@@ -12,9 +12,6 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Debugging with tmate
-      uses: mxschmitt/action-tmate@v3.13
-    
     - name: ADD msbuild TO PATH
       uses: microsoft/setup-msbuild@v1.1
       
@@ -66,8 +63,11 @@ jobs:
     - name: BUILD NPOI.Multitarget.Test
       id: build-npoi
       run: dotnet build solution/NPOI.Multitarget.Test.sln --no-restore --configuration 'Debug' --verbosity q
-
-    - name: vstest-action
+    
+    - name: TMATE
+      uses: mxschmitt/action-tmate@v3.13
+      
+    - name: VSTEST
       if: always() && steps.build-npoi.outcome == 'success'
       uses: microsoft/vstest-action@v1.0.0
       with:
