@@ -68,8 +68,8 @@ jobs:
       if: always() && steps.build-npoi.outcome == 'success'
       uses: microsoft/vstest-action@v1.0.0
       with:
-        testAssembly: testcases/openxml4net/bin/Debug/net6.0/NPOI.OOXML4Net.TestCases.dll
-        searchFolder: testcases/openxml4net/bin/Debug/net6.0
+        testAssembly: NPOI.*.TestCases.dll
+        searchFolder: ./testcases/openxml4net/bin/Debug/
         runSettingsFile: testcases/test.core.runsettings
   
     - name: RUN NPOI.Multitarget.TestCases
