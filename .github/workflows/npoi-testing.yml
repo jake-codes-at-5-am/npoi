@@ -62,7 +62,7 @@ jobs:
        
     - name: MODIFY CSPROJ FILES
       shell: pwsh
-      run:  -File modify-csproj.ps1
+      run:  ./modify-csproj.ps1
     
     - name: RESTORE NPOI.Multitarget.Test DEPENDENCIES
       run: dotnet restore solution/NPOI.Multitarget.Test.sln
