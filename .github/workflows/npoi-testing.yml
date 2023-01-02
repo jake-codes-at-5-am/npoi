@@ -70,7 +70,10 @@ jobs:
     - name: BUILD NPOI.Multitarget.Test
       id: build-npoi
       run: dotnet build solution/NPOI.Multitarget.Test.sln --no-restore --configuration 'Debug' --verbosity q
-      
+   
+    - name: PWD
+      run: pwd
+   
     - name: RUN NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
       run: dotnet test testcases/main/bin/Debug/net6.0/NPOI.TestCases.dll --configuration 'Debug' --settings ./testcases/test.dotnet.runsettings --verbosity q --logger 'trx;logfilename=NPOI.TestCases.trx' --results-directory test-results
@@ -111,6 +114,9 @@ jobs:
       id: build-npoi
       run: dotnet build solution/NPOI.Multitarget.Test.sln --no-restore --configuration 'Debug' --verbosity q
 
+    - name: PWD
+      run: pwd
+   
     - name: RUN NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
       run: dotnet test testcases/main/bin/Debug/net6.0/NPOI.TestCases.dll --configuration 'Debug' --settings ./testcases/test.dotnet.runsettings --verbosity q --logger 'trx;logfilename=NPOI.TestCases.trx' --results-directory test-results
