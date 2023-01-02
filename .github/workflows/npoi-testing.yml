@@ -19,6 +19,9 @@ jobs:
       uses: actions/setup-dotnet@v1	
       with:	
         dotnet-version: 6.0.x
+
+    - name: MODIFY CSPROJ FILES
+      run: powershell -File modify-csproj.ps1
     
     - name: RESTORE NPOI.Multitarget.Test DEPENDENCIES
       run: dotnet restore solution/NPOI.Multitarget.Test.sln
