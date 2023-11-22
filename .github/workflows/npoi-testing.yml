@@ -19,7 +19,6 @@ jobs:
       uses: actions/setup-dotnet@v1	
       with:	
         dotnet-version: | 
-          3.1.x
           6.0.x
           
     - name: RESTORE NPOI.Multitarget.Test NUGET PACKAGES
@@ -77,7 +76,6 @@ jobs:
       uses: actions/setup-dotnet@v1	
       with:	
         dotnet-version: | 
-          3.1.x
           6.0.x
           
     - name: RESTORE NPOI.Multitarget.Test NUGET PACKAGES
@@ -138,7 +136,6 @@ jobs:
       uses: actions/setup-dotnet@v1	
       with:	
         dotnet-version: | 
-          3.1.x
           6.0.x
           
     - name: RESTORE NPOI.Multitarget.Test NUGET PACKAGES
