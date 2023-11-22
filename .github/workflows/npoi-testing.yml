@@ -22,7 +22,9 @@ jobs:
           6.0.x
           
     - name: RESTORE NPOI.Multitarget.Test NUGET PACKAGES
-      run: dotnet restore solution/NPOI.Multitarget.Test.sln
+      run: >-
+        dotnet restore solution/NPOI.Multitarget.Test.sln
+        --property:TargetFrameworks=net6.0
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
@@ -80,7 +82,9 @@ jobs:
           6.0.x
           
     - name: RESTORE NPOI.Multitarget.Test NUGET PACKAGES
-      run: dotnet restore solution/NPOI.Multitarget.Test.sln
+      run: >-
+        dotnet restore solution/NPOI.Multitarget.Test.sln
+        --property:TargetFrameworks=net6.0
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
@@ -138,7 +142,9 @@ jobs:
           6.0.x
           
     - name: RESTORE NPOI.Multitarget.Test NUGET PACKAGES
-      run: dotnet restore solution/NPOI.Multitarget.Test.sln
+      run: >-
+        dotnet restore solution/NPOI.Multitarget.Test.sln
+        --property:TargetFrameworks=net6.0
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
