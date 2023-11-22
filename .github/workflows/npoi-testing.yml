@@ -8,7 +8,7 @@ on:
 
 jobs:
   RUN-WINDOWS-TESTS:
-    runs-on: windows-2022
+    runs-on: windows-latest
     steps:
     - uses: actions/checkout@v3
     
@@ -31,6 +31,7 @@ jobs:
         --no-restore
         --configuration 'Debug'
         --verbosity q
+        --property:TargetFrameworks=net6.0
       
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
@@ -88,9 +89,7 @@ jobs:
         --no-restore
         --configuration 'Debug'
         --verbosity q
-   
-    - name: PWD
-      run: pwd
+        --property:TargetFrameworks=net6.0
    
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
@@ -148,10 +147,8 @@ jobs:
         --no-restore
         --configuration 'Debug'
         --verbosity q
+        --property:TargetFrameworks=net6.0
 
-    - name: PWD
-      run: pwd
-   
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
       run: >-
