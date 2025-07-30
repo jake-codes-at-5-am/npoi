@@ -26,7 +26,6 @@ namespace TestCases.XSSF.UserModel
     using NPOI.XSSF.UserModel;
     using NUnit.Framework;
 
-
     [TestFixture]
     public class TestXSSFTable
     {

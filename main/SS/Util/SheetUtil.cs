@@ -326,12 +326,132 @@ namespace NPOI.SS.Util
 
         public static double GetCellHeight(ICell cell, bool useMergedCells)
         {
-            ICell cellToMeasure = useMergedCells ? GetFirstCellFromMergedRegion(cell) : cell;
+            if (cell == null)
+                return -1;
 
-            double stringHeight = GetActualHeight(cellToMeasure);
-            int numberOfRowsInMergedRegion = useMergedCells ? GetNumberOfRowsInMergedRegion(cellToMeasure) : 1;
+            // 1. Check if the cell is part of a merged region
+            if (useMergedCells && cell.IsMergedCell)
+                return cell.Sheet.DefaultRowHeightInPoints;
 
-            return GetCellConetntHeight(stringHeight, numberOfRowsInMergedRegion);
+            var style = cell.CellStyle;
+            if (style == null)
+                return GetActualHeight(cell); // fallback to simple actual height
+
+            bool isWrap = style.WrapText;
+            //bool isRotated = style.Rotation != 0;
+            string stringValue = GetCellStringValue(cell);
+            Font windowsFont = GetWindowsFont(cell);
+
+            // To-Do: case WrapText with Rotation
+            // Case 1: Rotation + WrapText (special rule: only shrink, not expand)
+            //if (isWrap && isRotated)
+            //{
+            //    double contentHeight = GetRotatedContentHeight(cell, stringValue, windowsFont);
+            //    double currentRowHeight = cell.Row.HeightInPoints;
+
+            //    // Only shrink if content is smaller than current row height
+            //    return contentHeight < currentRowHeight ? contentHeight : currentRowHeight;
+            //}
+
+            // Case 2: WrapText only (normal grow/shrink behavior)
+            if (isWrap)
+            {
+                return GetWrapCellHeight(cell, useMergedCells);
+            }
+
+            // To-Do: case WrapText with Rotation
+            // Case 3: Rotation only (auto-size enabled)
+            //if (isRotated)
+            //{
+            //    return GetRotatedContentHeight(cell, stringValue, windowsFont);
+            //}
+
+            // Case 4: Normal text, auto-size
+            return GetActualHeight(cell);
+        }
+
+        /// <summary>
+        /// Calculates the required height of a cell with WrapText enabled.
+        /// </summary>
+        private static double GetWrapCellHeight(ICell cell, bool useMergedCells)
+        {
+            if (cell == null || cell.Row == null)
+            {
+                return cell.Sheet.DefaultRowHeightInPoints; // return default row height 
+            }
+
+            ISheet sheet = cell.Sheet;
+
+            // 1. Get all the necessary info
+            string stringValue = GetCellStringValue(cell);
+            if (string.IsNullOrEmpty(stringValue))
+            {
+                return cell.Sheet.DefaultRowHeightInPoints; // return default row height 
+            }
+
+            Font font = GetWindowsFont(cell);
+
+            // 2. Calculate the available width for the text in pixels
+            double availableWidthPixels = GetColumnWidthInPixels(sheet, cell.ColumnIndex, cell);
+            //availableWidthPixels = 96;
+
+            // Subtract a small amount for cell padding
+            availableWidthPixels -= 5;
+            if (availableWidthPixels <= 0)
+            {
+                return GetContentHeight(stringValue, font); // Not enough space to wrap
+            }
+
+            // 3. Measure the text height with wrapping
+            string[] lines = stringValue.Split('\n');
+            double totalHeightPixels = 0;
+
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrEmpty(line))
+                {
+                    // Handle empty lines from manual breaks (\n\n)
+                    totalHeightPixels += font.Size;
+                    continue;
+                }
+
+                // Use SixLabors.Fonts to measure the string with a wrapping length.
+                var textOptions = new TextOptions(font) { WrappingLength = (float)availableWidthPixels, Dpi = dpi };
+                FontRectangle measuredBounds = TextMeasurer.MeasureAdvance(line, textOptions);
+
+                totalHeightPixels += Math.Round(measuredBounds.Height, 0, MidpointRounding.ToEven);
+            }
+
+            return totalHeightPixels;
+        }
+
+        /// <summary>
+        /// Finds the CellRangeAddress for a given cell, if it's part of a merged region.
+        /// </summary>
+        public static CellRangeAddress GetMergedRegionForCell(ICell cell)
+        {
+            if (cell == null || !cell.IsMergedCell)
+                return null;
+            foreach (var region in cell.Sheet.MergedRegions)
+            {
+                if (region.IsInRange(cell.RowIndex, cell.ColumnIndex))
+                {
+                    return region;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Converts Excel's column width (units of 1/256th of a character width) to pixels.
+        /// </summary>
+        private static double GetColumnWidthInPixels(ISheet sheet, int columnIndex, ICell cell)
+        {
+            double widthInUnits = sheet.GetColumnWidth(columnIndex);
+            int cellFontCharWidth = GetCellFontCharWidth(cell);
+
+            // This formula is a standard approximation
+            return (double)widthInUnits / 256 * cellFontCharWidth;
         }
 
         private static ICell GetFirstCellFromMergedRegion(ICell cell)
@@ -373,9 +493,9 @@ namespace NPOI.SS.Util
             return 1;
         }
 
-        private static double GetCellConetntHeight(double actualHeight, int numberOfRowsInMergedRegion)
+        private static double GetCellContentHeight(double actualHeight, int numberOfRowsInMergedRegion)
         {
-            return Math.Max(-1, actualHeight / numberOfRowsInMergedRegion);
+            return numberOfRowsInMergedRegion <= 1 ? actualHeight : Math.Max(-1, actualHeight / numberOfRowsInMergedRegion);
         }
 
         private static string GetCellStringValue(ICell cell)
@@ -430,6 +550,34 @@ namespace NPOI.SS.Util
             var x2 = Math.Abs(measureResult.Width * Math.Sin(angle));
 
             return Math.Round(x1 + x2, 0, MidpointRounding.ToEven);
+
+            // To-Do: fix calculation of text rotation with height
+            //if (cell == null || cell.CellStyle == null || string.IsNullOrEmpty(stringValue))
+            //    return 0;
+
+            //// Convert degrees to radians
+            //double angleRad = cell.CellStyle.Rotation * Math.PI / 180.0;
+
+            //// Measure unrotated text size
+            //var textSize = TextMeasurer.MeasureAdvance(
+            //    stringValue,
+            //    new TextOptions(windowsFont)
+            //    {
+            //        Dpi = dpi
+            //    }
+            //);
+
+            //// Get the column width in pixels or points (depends on your library; adjust accordingly)
+            //double columnWidthInPixels = GetColumnWidthInPixels(cell.Sheet, cell.ColumnIndex, cell);
+
+            //// Optional: Clamp text width to cell width if needed
+            //var measuredTextWidth = Math.Min(textSize.Width, columnWidthInPixels);
+
+            //// Calculate rotated bounding box height
+            //double rotatedHeight = Math.Abs(textSize.Height * Math.Cos(angleRad)) + Math.Abs(measuredTextWidth * Math.Sin(angleRad));
+            ////double rotatedHeight = (Math.Abs(textSize.Height * Math.Cos(angleRad)) + Math.Abs(measuredTextWidth * Math.Sin(angleRad))) * 1.07 + 1.5;
+            //return Math.Round(rotatedHeight, 0, MidpointRounding.ToEven);
+
         }
 
         private static double GetContentHeight(string stringValue, Font windowsFont)
@@ -589,7 +737,8 @@ namespace NPOI.SS.Util
             int defaultCharWidth = GetDefaultCharWidth(sheet.Workbook);
 
             // No need to explore the whole sheet: explore only the first maxRows lines
-            if (maxRows > 0 && lastRow - firstRow > maxRows) lastRow = firstRow + maxRows;
+            if (maxRows > 0 && lastRow - firstRow > maxRows)
+                lastRow = firstRow + maxRows;
 
             double width = -1;
             for (int rowIdx = firstRow; rowIdx <= lastRow; ++rowIdx)
@@ -616,6 +765,39 @@ namespace NPOI.SS.Util
             Font font = IFont2Font(defaultFont);
 
             return (int)Math.Ceiling(TextMeasurer.MeasureSize(new string(defaultChar, 1), new TextOptions(font) { Dpi = dpi }).Width);
+        }
+
+        /// <summary>
+        /// Gets the width of a standard character ('0') using the specific font and style of the given cell.
+        /// This provides a font-specific benchmark for layout calculations like column width or text wrapping.
+        /// </summary>
+        public static int GetCellFontCharWidth(ICell cell)
+        {
+            // 1. Guard clause for null cells.
+            if (cell == null)
+            {
+                return 0;
+            }
+
+            // 2. Get the workbook and the cell's specific style.
+            IWorkbook wb = cell.Sheet.Workbook;
+            ICellStyle style = cell.CellStyle;
+
+            // 3. Get the IFont object from the style's font index.
+            // Every style points to a font in the workbook's font table.
+            IFont npoiFont = wb.GetFontAt(style.FontIndex);
+
+            // 4. Convert the NPOI IFont to a SixLabors.Fonts.Font object
+            // using the existing helper method.
+            Font sixLaborsFont = IFont2Font(npoiFont);
+
+            // 5. Measure the width of the single 'defaultChar' ('0') which is defined
+            // at the class level. We use MeasureAdvance as it's efficient for single-line width.
+            var textOptions = new TextOptions(sixLaborsFont) { Dpi = dpi };
+            FontRectangle size = TextMeasurer.MeasureAdvance(defaultChar.ToString(), textOptions);
+
+            // 6. Return the calculated width.
+            return (int)Math.Ceiling(size.Width);
         }
 
         /**
