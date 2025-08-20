@@ -306,7 +306,7 @@ namespace NPOI.HSSF.Model
 
         private static bool IsDVTPriorRecord(RecordBase rb)
         {
-            if (rb is MergedCellsTable || rb is ConditionalFormattingTable)
+            if (rb is MergedCellsTable || rb is ConditionalFormattingTable || rb is RowRecordsAggregate)
             {
                 return true;
             }
