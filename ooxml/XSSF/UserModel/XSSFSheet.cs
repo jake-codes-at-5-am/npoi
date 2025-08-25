@@ -51,6 +51,7 @@ namespace NPOI.XSSF.UserModel
     {
         private static readonly POILogger logger = POILogFactory.GetLogger(typeof(XSSFSheet));
 
+        // Default xls height row here, based on the new Excel format default height
         private static readonly double DEFAULT_ROW_HEIGHT = 15.0;
         private static readonly double DEFAULT_MARGIN_HEADER = 0.3;
         private static readonly double DEFAULT_MARGIN_FOOTER = 0.3;
