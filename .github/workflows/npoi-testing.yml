@@ -32,6 +32,7 @@ jobs:
         dotnet restore solution/NPOI.Multitarget.Test.sln
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
+        -p:NoWarn=NU1605
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
@@ -42,6 +43,7 @@ jobs:
         --verbosity q
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
+        -p:NoWarn=NU1605
       
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
@@ -83,6 +85,22 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v3
+
+    # Install fonts so SixLabors.Fonts can resolve Arial/Calibri/etc. on Linux
+    - name: Install fonts (MS core + FOSS fallbacks)
+      run: |
+        sudo apt-get update
+        # Helpful utilities
+        sudo apt-get install -y --no-install-recommends fontconfig ca-certificates
+        # FOSS fallbacks (good to have even if MS fonts fail to fetch)
+        sudo apt-get install -y --no-install-recommends fonts-dejavu fonts-liberation fonts-noto-core fonts-noto-cjk
+        # Pre-accept the EULA for Microsoft Core Fonts and install
+        echo "msttcorefonts msttcorefonts/accepted-mscorefonts-eula select true" | sudo debconf-set-selections
+        sudo apt-get install -y --no-install-recommends ttf-mscorefonts-installer || true
+        # Rebuild font cache
+        sudo fc-cache -fv
+        # (Optional) quick sanity check
+        fc-list | head
     
     - name: SETUP .NET SDKs
       uses: actions/setup-dotnet@v1	
@@ -96,6 +114,7 @@ jobs:
         dotnet restore solution/NPOI.Multitarget.Test.sln
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
+        -p:NoWarn=NU1605
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
@@ -106,6 +125,7 @@ jobs:
         --verbosity q
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
+        -p:NoWarn=NU1605
    
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
@@ -160,6 +180,7 @@ jobs:
         dotnet restore solution/NPOI.Multitarget.Test.sln
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
+        -p:NoWarn=NU1605
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
@@ -170,6 +191,7 @@ jobs:
         --verbosity q
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
+        -p:NoWarn=NU1605
 
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
