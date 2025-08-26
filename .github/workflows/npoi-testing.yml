@@ -32,7 +32,6 @@ jobs:
         dotnet restore solution/NPOI.Multitarget.Test.sln
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
-        -p:NoWarn=NU1605
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
@@ -43,7 +42,6 @@ jobs:
         --verbosity q
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
-        -p:NoWarn=NU1605
       
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
@@ -114,7 +112,6 @@ jobs:
         dotnet restore solution/NPOI.Multitarget.Test.sln
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
-        -p:NoWarn=NU1605
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
@@ -125,7 +122,6 @@ jobs:
         --verbosity q
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
-        -p:NoWarn=NU1605
    
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
@@ -180,7 +176,6 @@ jobs:
         dotnet restore solution/NPOI.Multitarget.Test.sln
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
-        -p:NoWarn=NU1605
       
     - name: BUILD NPOI.Multitarget.Test.sln
       id: build-npoi
@@ -191,7 +186,6 @@ jobs:
         --verbosity q
         --property:TargetFrameworks=net6.0
         --property:WarningLevel=0
-        -p:NoWarn=NU1605
 
     - name: RUN .NET 6 NPOI.Multitarget.TestCases
       if: always() && steps.build-npoi.outcome == 'success'
