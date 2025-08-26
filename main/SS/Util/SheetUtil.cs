@@ -45,7 +45,7 @@ namespace NPOI.SS.Util
         private const int CELL_PADDING_PIXEL = 8;
         private const int DEFAULT_PADDING_PIXEL = 20;
         private const double WIDTH_CORRECTION = 1.05;
-        private const double MAXIMUM_ROW_HEIGH_IN_POINTS = 409.5;
+        private const double MAXIMUM_ROW_HEIGHT_IN_POINTS = 409.5;
         private const double POINTS_PER_INCH = 72.0;
         private const double HEIGHT_POINT_CORRECTION = 1.33;
         private static readonly int SixLaborsFontsMajorVersion = typeof(SixLabors.Fonts.Font).Assembly.GetName().Version.Major;
@@ -121,11 +121,11 @@ namespace NPOI.SS.Util
                 {
                     for (int i = 0; i < list.Count; i++)
                     {
-                        var r = list[i];
-                        if (r.FirstColumn <= col && col <= r.LastColumn &&
-                            r.FirstRow <= row && row <= r.LastRow)
+                        var currentRegion = list[i];
+                        if (currentRegion.FirstColumn <= col && col <= currentRegion.LastColumn &&
+                            currentRegion.FirstRow <= row && row <= currentRegion.LastRow)
                         {
-                            region = r;
+                            region = currentRegion;
                             return true;
                         }
                     }
@@ -361,10 +361,10 @@ namespace NPOI.SS.Util
         {
             if (row == null)
             {
-                return -1;
+                return 0;
             }
 
-            double rowHeight = -1;
+            double rowHeight = 0;
             merge ??= MergeIndex.Build(row.Sheet);
 
             foreach (var cell in row.Cells)
@@ -380,123 +380,32 @@ namespace NPOI.SS.Util
         {
             IRow row = sheet.GetRow(rowIdx);
             if (row == null)
-                return -1;
+            {
+                return 0;
+            }
 
-            var merge = MergeIndex.Build(sheet);
-            double defaultPt = sheet.DefaultRowHeightInPoints;
+            var mergeIndex = MergeIndex.Build(sheet);
 
-            // Base height (POINTS) from truly NON-MERGED cells only
-            double basePointSelected = RowBaseFromNonMergedPoints(row, merge);
-            double finalPt = basePointSelected;
+            // Start with the height required by non-merged cells in the target row.
+            double finalHeightInPoints = RowBaseFromNonMergedPoints(row, mergeIndex);
 
             // ---------- Rule 1: useMergedCells == false ----------
             // Ignore ALL merged cells (horizontal/vertical/rectangular). Selected row only.
             if (!useMergedCells)
-                return Math.Min(finalPt, MAXIMUM_ROW_HEIGH_IN_POINTS);
+            {
+                return Math.Min(finalHeightInPoints, MAXIMUM_ROW_HEIGHT_IN_POINTS);
+            }
 
             // ---------- Rule 2: useMergedCells == true ----------
+            // Account for merged cells
 
-            // 2a) Horizontal-only merges on the selected row: ensure the row can fit them.
-            foreach (var region in merge.RegionsForRow(rowIdx))
-            {
-                if (region.FirstRow == region.LastRow) // merged columns only (same row)
-                {
-                    double mergedPoint = MergedBlockTotalPoints(sheet, region); // POINTS
-                    if (mergedPoint > finalPt)
-                        finalPt = mergedPoint;
-                }
-            }
+            // Adjust height for any horizontal merges on this row.
+            finalHeightInPoints = HandleMergedOnlyColumns(sheet, rowIdx, mergeIndex, finalHeightInPoints);
 
-            // 2b) Vertical/rectangular merges: fit content across the whole merged area.
-            var seen = new HashSet<(int fr, int fc, int lr, int lc)>();
-            foreach (var region in merge.RegionsForRow(rowIdx))
-            {
-                if (region.LastRow == region.FirstRow)
-                    continue; // skip horizontal-only here
+            // Adjust height for any vertical/rectangular merges involving this row.
+            finalHeightInPoints = HandleMergedBothRowsAndColumns(sheet, rowIdx, mergeIndex, finalHeightInPoints);
 
-                var key = (region.FirstRow, region.FirstColumn, region.LastRow, region.LastColumn);
-                if (!seen.Add(key))
-                    continue;
-
-                int r0 = region.FirstRow, r1 = region.LastRow, n = r1 - r0 + 1;
-
-                // Gather bases per row (POINTS) from NON-MERGED cells only
-                var basePt = new double[n];
-                var hasContent = new bool[n];
-                for (int r = r0; r <= r1; r++)
-                {
-                    var rr = sheet.GetRow(r) ?? sheet.CreateRow(r);
-                    double b = RowBaseFromNonMergedPoints(rr, merge); // POINTS; ignores any merged cells
-                    basePt[r - r0] = b;
-                    hasContent[r - r0] = RowHasNonMergedContent(rr, merge) || b > defaultPt + 0.1;
-                }
-
-                // Total height needed for the merged block (POINTS)
-                double totalPt = MergedBlockTotalPoints(sheet, region);
-
-                // Baseline assignment: content rows get their base; others start at default
-                var assign = new double[n];
-                double sumContent = 0;
-                int emptyCount = 0;
-                for (int i = 0; i < n; i++)
-                {
-                    assign[i] = hasContent[i] ? basePt[i] : defaultPt;
-                    if (hasContent[i])
-                        sumContent += basePt[i];
-                    else
-                        emptyCount++;
-                }
-
-                if (emptyCount == n)
-                {
-                    // No non-merged content in any row: split evenly (but never below base/default)
-                    double even = Math.Max(defaultPt, totalPt / n);
-                    for (int i = 0; i < n; i++)
-                        assign[i] = Math.Max(basePt[i], even);
-                }
-                else
-                {
-                    // Some rows have content: distribute the remainder
-                    double remainder = Math.Max(0, totalPt - sumContent);
-                    if (remainder > 0)
-                    {
-                        if (emptyCount > 0)
-                        {
-                            // Spread remainder evenly across rows without non-merged content
-                            double perEmpty = Math.Max(defaultPt, remainder / emptyCount);
-                            for (int i = 0; i < n; i++)
-                                if (!hasContent[i])
-                                    assign[i] = Math.Max(assign[i], perEmpty);
-                        }
-                        else
-                        {
-                            // All rows have content: add remainder to the row with the highest base
-                            int anchor = 0;
-                            double best = basePt[0];
-                            for (int i = 1; i < n; i++)
-                                if (basePt[i] > best)
-                                { best = basePt[i]; anchor = i; }
-                            assign[anchor] = basePt[anchor] + remainder;
-                        }
-                    }
-                }
-
-                // Apply heights to all rows in the merged region (POINTS), clamped to Excel max
-                for (int i = 0; i < n; i++)
-                {
-                    var rr = sheet.GetRow(r0 + i) ?? sheet.CreateRow(r0 + i);
-                    double current = rr.HeightInPoints > 0 ? rr.HeightInPoints : defaultPt;
-                    double target = Math.Min(assign[i], MAXIMUM_ROW_HEIGH_IN_POINTS);
-                    rr.HeightInPoints = (float)Math.Max(current, target);
-                }
-
-                // Track selected row’s assigned height for return value
-                double selectedAssigned = Math.Min(assign[rowIdx - r0], MAXIMUM_ROW_HEIGH_IN_POINTS);
-                if (selectedAssigned > finalPt)
-                    finalPt = selectedAssigned;
-            }
-
-            return Math.Min(finalPt, MAXIMUM_ROW_HEIGH_IN_POINTS);
+            return Math.Min(finalHeightInPoints, MAXIMUM_ROW_HEIGHT_IN_POINTS);
         }
 
         public static double GetCellHeight(ICell cell, bool useMergedCells, MergeIndex merge = null)
@@ -522,7 +431,7 @@ namespace NPOI.SS.Util
             int mergedRowCount = 1 + mergedRegion.LastRow - mergedRegion.FirstRow;
             double mergedWidth = 0;
 
-            mergedWidth = GetMergedPixelWidth(cell.Sheet, mergedRegion.FirstRow, mergedRegion.FirstColumn, mergedRegion.LastRow, mergedRegion.LastColumn, cell);
+            mergedWidth = GetMergedPixelWidth(cell.Sheet, mergedRegion.FirstRow, mergedRegion.FirstColumn, mergedRegion.LastRow, mergedRegion.LastColumn);
 
             // Measure the total height for the text, with all columns combined
             double totalHeight = MeasureWrapTextHeight(topLeftCell, mergedRegion.FirstColumn, mergedRegion.LastColumn, mergedRegion.FirstRow, mergedRegion.LastRow, mergedWidth);
@@ -534,10 +443,8 @@ namespace NPOI.SS.Util
         /// <summary>
         /// Converts Excel's column width (units of 1/256th of a character width) to pixels.
         /// </summary>
-        private static float GetColumnWidthInPixels(ISheet sheet, int columnIndex, ICell cell)
+        private static float GetColumnWidthInPixels(ISheet sheet, int columnIndex)
         {
-            sheet.GetType();
-            var type = sheet.GetType();
             // 1. Get the width in terms of number of default characters
             double widthInChars = sheet.GetColumnWidth(columnIndex) / 256.0;
 
@@ -546,18 +453,6 @@ namespace NPOI.SS.Util
 
             // 3. check is HSSFSheet or not (old format .xls) if true, return with slight pixel adjustment. if false, return normal calclation
             return sheet is NPOI.HSSF.UserModel.HSSFSheet ? (float)(widthInChars * defaultCharWidth) * (float)WIDTH_CORRECTION : (float)(widthInChars * defaultCharWidth);
-        }
-        private static ICell GetFirstCellFromMergedRegion(ICell cell)
-        {
-            foreach (var region in cell.Sheet.MergedRegions)
-            {
-                if (region.IsInRange(cell.RowIndex, cell.ColumnIndex))
-                {
-                    return cell.Sheet.GetRow(region.FirstRow).GetCell(region.FirstColumn);
-                }
-            }
-
-            return cell;
         }
 
         private static double GetActualHeight(ICell cell)
@@ -582,24 +477,6 @@ namespace NPOI.SS.Util
             }
 
             return GetContentHeight(stringValue, windowsFont, cell);
-        }
-
-        private static int GetNumberOfRowsInMergedRegion(ICell cell)
-        {
-            foreach (var region in cell.Sheet.MergedRegions)
-            {
-                if (region.IsInRange(cell.RowIndex, cell.ColumnIndex))
-                {
-                    return 1 + region.LastRow - region.FirstRow;
-                }
-            }
-
-            return 1;
-        }
-
-        private static double GetCellContentHeight(double actualHeight, int numberOfRowsInMergedRegion)
-        {
-            return numberOfRowsInMergedRegion <= 1 ? actualHeight : Math.Max(-1, actualHeight / numberOfRowsInMergedRegion);
         }
 
         private static string GetCellStringValue(ICell cell)
@@ -663,7 +540,7 @@ namespace NPOI.SS.Util
             {
                 ISheet sheet = cell.Sheet;
                 int columnIndex = cell.ColumnIndex;
-                var pixelWidth = GetColumnWidthInPixels(sheet, columnIndex, cell);
+                var pixelWidth = GetColumnWidthInPixels(sheet, columnIndex);
                 options.WrappingLength = pixelWidth <= 0
                     ? (float)sheet.GetColumnWidth(columnIndex)
                     : pixelWidth;
@@ -710,11 +587,11 @@ namespace NPOI.SS.Util
                 if (SixLaborsFontsMajorVersion >= 2)
                 {
                     var numberOfColumns = lastCol - firstCol + 1;
-                    wrapWidthPixels = GetMergedPixelWidth(cell.Sheet, firstRow, firstCol, lastRow, lastCol, cell) + numberOfColumns * CELL_PADDING_PIXEL;
+                    wrapWidthPixels = GetMergedPixelWidth(cell.Sheet, firstRow, firstCol, lastRow, lastCol) + numberOfColumns * CELL_PADDING_PIXEL;
                 }
                 else
                 {
-                    wrapWidthPixels = GetMergedPixelWidth(cell.Sheet, firstRow, firstCol, lastRow, lastCol, cell);
+                    wrapWidthPixels = GetMergedPixelWidth(cell.Sheet, firstRow, firstCol, lastRow, lastCol);
                 }
             }
 
@@ -733,6 +610,195 @@ namespace NPOI.SS.Util
             return Math.Round(totalBounds.Height, 0, MidpointRounding.ToEven);
         }
 
+        /// <summary>
+        /// A helper class to store calculated metrics for a single row within a merged region.
+        /// </summary>
+        private class RowMetrics
+        {
+            public double BasePoints { get; set; }
+            public bool HasNonMergedContent { get; set; }
+        }
+
+        /// <summary>
+        /// Updates the calculated row height to accommodate any horizontal-only merged cells.
+        /// </summary>
+        private static double HandleMergedOnlyColumns(ISheet sheet, int rowIndex, MergeIndex mergeIndex, double currentMaxHeight)
+        {
+            double newMaxHeight = currentMaxHeight;
+            foreach (var region in mergeIndex.RegionsForRow(rowIndex))
+            {
+                // A horizontal merge spans multiple columns but only a single row.
+                if (region.FirstRow == region.LastRow)
+                {
+                    double mergedBlockHeight = MergedBlockTotalPoints(sheet, region);
+                    if (mergedBlockHeight > newMaxHeight)
+                    {
+                        newMaxHeight = mergedBlockHeight;
+                    }
+                }
+            }
+            return newMaxHeight;
+        }
+
+        /// <summary>
+        /// Processes vertical or rectangular merges, distributing required height among all affected rows.
+        /// </summary>
+        private static double HandleMergedBothRowsAndColumns(ISheet sheet, int rowIndex, MergeIndex mergeIndex, double currentMaxHeight)
+        {
+            double defaultRowHeight = sheet.DefaultRowHeightInPoints;
+            double finalHeightForSelectedRow = currentMaxHeight;
+
+            var processedRegions = new HashSet<(int, int, int, int)>();
+
+            foreach (var region in mergeIndex.RegionsForRow(rowIndex))
+            {
+                // Skip horizontal-only merges; they are handled separately.
+                if (region.FirstRow == region.LastRow)
+                {
+                    continue;
+                }
+
+                var regionKey = (region.FirstRow, region.FirstColumn, region.LastRow, region.LastColumn);
+                if (!processedRegions.Add(regionKey))
+                {
+                    continue; // Already processed this merge region.
+                }
+
+                int firstRowIndex = region.FirstRow;
+                int lastRowIndex = region.LastRow;
+                int rowCount = lastRowIndex - firstRowIndex + 1;
+
+                // 1. Gather metrics for each row in the merged region.
+                var rowMetrics = CollectRowMetricsForRegion(sheet, region, mergeIndex);
+
+                // 2. Calculate how to distribute the merged content's height across the rows.
+                double totalMergedContentHeight = MergedBlockTotalPoints(sheet, region);
+                double[] assignedHeights = CalculateHeightDistribution(totalMergedContentHeight, rowMetrics, defaultRowHeight);
+
+                // 3. Apply the calculated heights to the actual rows on the sheet.
+                ApplyRowHeights(sheet, region, assignedHeights, defaultRowHeight, MAXIMUM_ROW_HEIGHT_IN_POINTS);
+
+                // 4. Update the final height for our specific target row.
+                double selectedRowAssignedHeight = assignedHeights[rowIndex - firstRowIndex];
+                if (selectedRowAssignedHeight > finalHeightForSelectedRow)
+                {
+                    finalHeightForSelectedRow = selectedRowAssignedHeight;
+                }
+            }
+
+            return finalHeightForSelectedRow;
+        }
+
+        /// <summary>
+        /// Collects base height and content status for each row within a given merged region.
+        /// </summary>
+        private static List<RowMetrics> CollectRowMetricsForRegion(ISheet sheet, CellRangeAddress region, MergeIndex mergeIndex)
+        {
+            const double DefaultHeightTolerance = 0.1;
+            double defaultRowHeight = sheet.DefaultRowHeightInPoints;
+            var metrics = new List<RowMetrics>();
+
+            for (int Row = region.FirstRow; Row <= region.LastRow; Row++)
+            {
+                IRow currentRow = sheet.GetRow(Row) ?? sheet.CreateRow(Row);
+                double basePoints = RowBaseFromNonMergedPoints(currentRow, mergeIndex);
+
+                metrics.Add(new RowMetrics
+                {
+                    BasePoints = basePoints,
+                    HasNonMergedContent = RowHasNonMergedContent(currentRow, mergeIndex) || basePoints > defaultRowHeight + DefaultHeightTolerance
+                });
+            }
+            return metrics;
+        }
+
+        /// <summary>
+        /// Calculates the optimal height distribution for rows in a vertical merge.
+        /// </summary>
+        private static double[] CalculateHeightDistribution(double totalMergedContentHeight, List<RowMetrics> metrics, double defaultRowHeight)
+        {
+            int rowCount = metrics.Count;
+            var assignedHeights = new double[rowCount];
+            double sumOfContentRows = 0;
+            int emptyRowCount = 0;
+
+            // Initial assignment: rows with content get their base height, others get the default.
+            for (int i = 0; i < rowCount; i++)
+            {
+                if (metrics[i].HasNonMergedContent)
+                {
+                    assignedHeights[i] = metrics[i].BasePoints;
+                    sumOfContentRows += metrics[i].BasePoints;
+                }
+                else
+                {
+                    assignedHeights[i] = defaultRowHeight;
+                    emptyRowCount++;
+                }
+            }
+
+            double remainingHeight = Math.Max(0, totalMergedContentHeight - sumOfContentRows);
+
+            if (emptyRowCount == rowCount)
+            {
+                // Case 1: No rows have non-merged content. Distribute total height evenly.
+                double evenSplit = Math.Max(defaultRowHeight, totalMergedContentHeight / rowCount);
+                for (int i = 0; i < rowCount; i++)
+                {
+                    assignedHeights[i] = Math.Max(metrics[i].BasePoints, evenSplit);
+                }
+            }
+            else if (remainingHeight > 0)
+            {
+                if (emptyRowCount > 0)
+                {
+                    // Case 2: Some rows are "empty". Distribute the remainder among them.
+                    double heightPerEmptyRow = Math.Max(defaultRowHeight, remainingHeight / emptyRowCount);
+                    for (int i = 0; i < rowCount; i++)
+                    {
+                        if (!metrics[i].HasNonMergedContent)
+                        {
+                            assignedHeights[i] = Math.Max(assignedHeights[i], heightPerEmptyRow);
+                        }
+                    }
+                }
+                else
+                {
+                    // Case 3: All rows have content. Add the remainder to the tallest row.
+                    int anchorIndex = 0;
+                    double maxBasePoints = 0;
+                    for (int i = 0; i < rowCount; i++)
+                    {
+                        if (metrics[i].BasePoints > maxBasePoints)
+                        {
+                            maxBasePoints = metrics[i].BasePoints;
+                            anchorIndex = i;
+                        }
+                    }
+                    assignedHeights[anchorIndex] += remainingHeight;
+                }
+            }
+
+            return assignedHeights;
+        }
+
+        /// <summary>
+        /// Sets the HeightInPoints for each row in a region based on the calculated assignments.
+        /// </summary>
+        private static void ApplyRowHeights(ISheet sheet, CellRangeAddress region, double[] assignedHeights, double defaultRowHeight, double maxHeight)
+        {
+            for (int i = 0; i < assignedHeights.Length; i++)
+            {
+                int currentRowIndex = region.FirstRow + i;
+                IRow currentRow = sheet.GetRow(currentRowIndex) ?? sheet.CreateRow(currentRowIndex);
+
+                double currentHeight = currentRow.HeightInPoints > 0 ? currentRow.HeightInPoints : defaultRowHeight;
+                double targetHeight = Math.Min(assignedHeights[i], maxHeight);
+
+                // Never shrink a row; only grow it if the new calculation is larger.
+                currentRow.HeightInPoints = (float)Math.Max(currentHeight, targetHeight);
+            }
+        }
 
         /**
          * Compute width of a single cell
@@ -888,7 +954,11 @@ namespace NPOI.SS.Util
             double correction = SixLaborsFontsMajorVersion >= 2 ? 1.0 : WIDTH_CORRECTION;
             int safeColspan = Math.Max(colspan, 1); // Avoid division by zero.
 
-            double finalWidth = (roundedWidth + padding) / safeColspan / defaultCharWidth * correction;      
+            double pixelWidthWithPadding = roundedWidth + padding;
+            double widthPerColumnInPixels = pixelWidthWithPadding / safeColspan;
+            double widthInExcelUnits = widthPerColumnInPixels / defaultCharWidth;
+            double finalWidth = widthInExcelUnits * correction;
+
             return Math.Max(width, finalWidth);
         }
 
@@ -899,7 +969,7 @@ namespace NPOI.SS.Util
         private static double MeasureCellHeightPoints(ICell cell)
         {
             if (cell == null)
-                return -1;
+                return 0;
 
             double hPx = cell.CellStyle.WrapText
                 ? MeasureWrapTextHeight(cell, cell.ColumnIndex, cell.ColumnIndex, cell.RowIndex, cell.RowIndex)
@@ -953,9 +1023,9 @@ namespace NPOI.SS.Util
         private static double RowBaseFromNonMergedPoints(IRow row, SheetUtil.MergeIndex merge)
         {
             if (row == null)
-                return -1;
+                return 0;
 
-            double basePt = -1;
+            double basePt = 0;
             foreach (var cell in row.Cells)
             {
                 if (cell == null)
@@ -975,12 +1045,12 @@ namespace NPOI.SS.Util
         // measured using top-left cell's text/style and the SUM of merged column widths.
         private static double MergedBlockTotalPoints(ISheet sheet, CellRangeAddress region)
         {
-            var tl = sheet.GetRow(region.FirstRow)?.GetCell(region.FirstColumn);
-            if (tl == null)
+            var topLeftCell = sheet.GetRow(region.FirstRow)?.GetCell(region.FirstColumn);
+            if (topLeftCell == null)
                 return sheet.DefaultRowHeightInPoints;
 
             // Sum merged columns width (px)
-            double mergedWidthPx = GetMergedPixelWidth(sheet, region.FirstRow, region.FirstColumn, region.LastRow, region.LastColumn, tl);
+            double mergedWidthPx = GetMergedPixelWidth(sheet, region.FirstRow, region.FirstColumn, region.LastRow, region.LastColumn);
 
             // var ver = typeof(SixLabors.Fonts.Font).Assembly.GetName().Version; // e.g., 2.1.3.0 vs 1.0.0.0
 
@@ -996,7 +1066,7 @@ namespace NPOI.SS.Util
 
             // use the FULL region span (rows + columns), not just the TL row.
             double totalPx = MeasureWrapTextHeight(
-                tl,
+                topLeftCell,
                 region.FirstColumn,
                 region.LastColumn,
                 region.FirstRow,
@@ -1316,14 +1386,14 @@ namespace NPOI.SS.Util
                 _ => TextMeasurer.MeasureSize(defaultChar.ToString(), new TextOptions(font) { Dpi = dpi }).Width);
         }
 
-        private static double GetMergedPixelWidth(ISheet sheet, int firstRow, int firstColumn, int lastRow, int lastColumn, ICell refCell)
+        private static double GetMergedPixelWidth(ISheet sheet, int firstRow, int firstColumn, int lastRow, int lastColumn)
         {
             var key = (sheet, firstRow, firstColumn, lastRow, lastColumn);
             if (_mergedWidthCache.TryGetValue(key, out var w))
                 return w;
             double sum = 0;
             for (int col = firstColumn; col <= lastColumn; col++)
-                sum += GetColumnWidthInPixels(sheet, col, refCell);
+                sum += GetColumnWidthInPixels(sheet, col);
             _mergedWidthCache[key] = sum;
             return sum;
         }
