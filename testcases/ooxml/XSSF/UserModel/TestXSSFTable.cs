@@ -17,15 +17,15 @@
 
 namespace TestCases.XSSF.UserModel
 {
-    using System;
-    using System.Collections.Generic;
     using NPOI.OpenXmlFormats.Spreadsheet;
     using NPOI.SS.UserModel;
     using NPOI.SS.Util;
     using NPOI.XSSF;
     using NPOI.XSSF.UserModel;
     using NUnit.Framework;
-
+    using System;
+    using System.Collections.Generic;
+    using System.IO;
 
     [TestFixture]
     public class TestXSSFTable
@@ -220,6 +220,42 @@ namespace TestCases.XSSF.UserModel
             Assert.AreEqual("Display name", table.DisplayName);
             Assert.AreEqual("\\_Prime.1", table.Name); // name and display name are different
             wb.Close();
+        }
+
+        [TestCase(true)]
+        [TestCase(false)]
+        public void SetAndGetHeaderRowCount(bool headerRowCountValue)
+        {
+            XSSFWorkbook wb = new XSSFWorkbook();
+            XSSFSheet sh = wb.CreateSheet() as XSSFSheet;
+
+            XSSFRow row = sh.CreateRow(0) as XSSFRow;
+            row.CreateCell(0).SetCellValue("Col1");
+            row.CreateCell(1).SetCellValue("Col2");
+
+            row = sh.CreateRow(1) as XSSFRow;
+            row.CreateCell(0).SetCellValue("Value1");
+            row.CreateCell(1).SetCellValue("Value2");
+
+            XSSFTable table = sh.CreateTable();
+            CT_Table ctTable = table.GetCTTable();
+            ctTable.@ref = "A1:B2";
+            ctTable.id = 1;
+            ctTable.name = "table1";
+
+            ctTable.headerRowCount = headerRowCountValue;
+
+            MemoryStream memoryStream = new MemoryStream();
+            wb.Write(memoryStream, leaveOpen: true);
+
+            memoryStream.Position = 0;
+
+            wb = new XSSFWorkbook(memoryStream);
+            table = wb.GetTable("table1");
+            ctTable = table.GetCTTable();
+
+            Assert.AreEqual(headerRowCountValue, ctTable.headerRowCount);
+            memoryStream.Dispose();
         }
 
         [Test]

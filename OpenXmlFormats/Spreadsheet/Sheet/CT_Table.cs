@@ -39,7 +39,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
 
         private ST_TableType tableTypeField;
 
-        private uint headerRowCountField;
+        private bool headerRowCountField;
 
         private bool insertRowField;
 
@@ -93,7 +93,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
             //this.sortStateField = new CT_SortState();
             //this.autoFilterField = new CT_AutoFilter();
             this.tableTypeField = ST_TableType.worksheet;
-            this.headerRowCountField = ((uint)(1));
+            this.headerRowCountField = true;
             this.insertRowField = false;
             this.insertRowShiftField = false;
             this.totalsRowCountField = ((uint)(0));
@@ -114,7 +114,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
             if (node.Attributes["tableType"] != null)
                 ctObj.tableType = (ST_TableType)Enum.Parse(typeof(ST_TableType), node.Attributes["tableType"].Value);
             if (node.Attributes["headerRowCount"] != null)
-                ctObj.headerRowCount = XmlHelper.ReadUInt(node.Attributes["headerRowCount"]);
+                ctObj.headerRowCount = XmlHelper.ReadBool(node.Attributes["headerRowCount"]);
             if (node.Attributes["insertRow"] != null)
                 ctObj.insertRow = XmlHelper.ReadBool(node.Attributes["insertRow"]);
             if (node.Attributes["insertRowShift"] != null)
@@ -336,8 +336,8 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
             }
         }
         [XmlAttribute]
-        [DefaultValue(typeof(uint), "1")]
-        public uint headerRowCount
+        [DefaultValue(true)]
+        public bool headerRowCount
         {
             get
             {
@@ -838,7 +838,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
             sw.Write(string.Format("<{0}", nodeName));
             XmlHelper.WriteAttribute(sw, "id", this.id);
             XmlHelper.WriteAttribute(sw, "uniqueName", this.uniqueName);
-            XmlHelper.WriteAttribute(sw, "name", this.name);
+            XmlHelper.WriteAttribute(sw, "name", XmlHelper.ExcelEncodeString(this.name));
             XmlHelper.WriteAttribute(sw, "totalsRowFunction", this.totalsRowFunction.ToString());
             XmlHelper.WriteAttribute(sw, "totalsRowLabel", this.totalsRowLabel);
             XmlHelper.WriteAttribute(sw, "queryTableFieldId", this.queryTableFieldId);
