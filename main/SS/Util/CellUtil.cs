@@ -19,6 +19,8 @@ namespace NPOI.SS.Util
 {
     using System;
     using System.Collections.Generic;
+    using System.Runtime.CompilerServices;
+    using System.Text;
     using NPOI.SS.UserModel;
     using NPOI.SS.Util;
     using NPOI.Util;
@@ -85,6 +87,8 @@ namespace NPOI.SS.Util
                         BORDER_TOP
         });
 
+        private static readonly ConditionalWeakTable<IWorkbook, StyleLookupCache> _workbookCaches
+            = new ConditionalWeakTable<IWorkbook, StyleLookupCache>();
 
         private static UnicodeMapping[] unicodeMappings;
 
@@ -402,37 +406,11 @@ namespace NPOI.SS.Util
         {
             IWorkbook workbook = cell.Sheet.Workbook;
             ICellStyle originalStyle = cell.CellStyle;
-            ICellStyle newStyle = null;
             Dictionary<string, object> values = GetFormatProperties(originalStyle);
             PutAll(properties, values);
 
-            // index seems like what index the cellstyle is in the list of styles for a workbook.
-            // not good to compare on!
-            int numberCellStyles = workbook.NumCellStyles;
-
-            for (int i = 0; i < numberCellStyles; i++)
-            {
-                ICellStyle wbStyle = workbook.GetCellStyleAt(i);
-                Dictionary<string, object> wbStyleMap = GetFormatProperties(wbStyle);
-
-                // the desired style already exists in the workbook. Use the existing style.
-                if (DictionaryEqual(wbStyleMap, values, null))
-                {
-                    newStyle = wbStyle;
-                    break;
-                }
-            }
-
-            // the desired style does not exist in the workbook. Create a new style with desired properties.
-            if (newStyle == null)
-            {
-                newStyle = workbook.CreateCellStyle();
-                if (cloneExistingStyles)
-                {
-                    newStyle.CloneStyleFrom(originalStyle);
-                }
-                SetFormatProperties(newStyle, workbook, values);
-            }
+            var cache = _workbookCaches.GetOrCreateValue(workbook);
+            ICellStyle newStyle = cache.LookUpOrCreate(values, workbook, cloneExistingStyles ? originalStyle : null);
 
             cell.CellStyle = newStyle;
         }
@@ -1140,6 +1118,93 @@ namespace NPOI.SS.Util
             {
                 // If date formatting fails, continue without it
                 // This ensures we don't break existing functionality
+            }
+        }
+        internal static string BuildCacheKey(Dictionary<string, object> properties)
+        {
+            var sb = new StringBuilder(256);
+            AppendProp(sb, properties, ALIGNMENT);
+            AppendProp(sb, properties, VERTICAL_ALIGNMENT);
+            AppendProp(sb, properties, BORDER_BOTTOM);
+            AppendProp(sb, properties, BORDER_DIAGONAL);
+            AppendProp(sb, properties, BORDER_LEFT);
+            AppendProp(sb, properties, BORDER_RIGHT);
+            AppendProp(sb, properties, BORDER_TOP);
+            AppendProp(sb, properties, BOTTOM_BORDER_COLOR);
+            AppendProp(sb, properties, DATA_FORMAT);
+            AppendProp(sb, properties, FILL_PATTERN);
+            AppendProp(sb, properties, FILL_FOREGROUND_COLOR);
+            AppendProp(sb, properties, FILL_BACKGROUND_COLOR);
+            AppendProp(sb, properties, FONT);
+            AppendProp(sb, properties, HIDDEN);
+            AppendProp(sb, properties, INDENTION);
+            AppendProp(sb, properties, LEFT_BORDER_COLOR);
+            AppendProp(sb, properties, LOCKED);
+            AppendProp(sb, properties, RIGHT_BORDER_COLOR);
+            AppendProp(sb, properties, ROTATION);
+            AppendProp(sb, properties, TOP_BORDER_COLOR);
+            AppendProp(sb, properties, WRAP_TEXT);
+            return sb.ToString();
+        }
+
+        private static void AppendProp(StringBuilder sb, Dictionary<string, object> properties, string key)
+        {
+            if (properties.TryGetValue(key, out var value))
+            {
+                sb.Append(value?.ToString() ?? "~");
+            }
+            else
+            {
+                sb.Append('~');
+            }
+            sb.Append('|');
+        }
+
+        private class StyleLookupCache
+        {
+            private readonly Dictionary<string, ICellStyle> _cache = new Dictionary<string, ICellStyle>();
+            private int _lastKnownStyleCount = -1;
+
+            public ICellStyle LookUpOrCreate(Dictionary<string, object> lookUpStyleMap, IWorkbook workbook, ICellStyle cloneSource)
+            {
+                var currentCount = workbook.NumCellStyles;
+
+                if (_lastKnownStyleCount != currentCount)
+                {
+                    RebuildCache(workbook);
+                }
+
+                var cacheKey = BuildCacheKey(lookUpStyleMap);
+
+                if (_cache.TryGetValue(cacheKey, out var cachedStyle))
+                {
+                    return cachedStyle;
+                }
+
+                var newStyle = workbook.CreateCellStyle();
+                if (cloneSource != null)
+                {
+                    newStyle.CloneStyleFrom(cloneSource);
+                }
+                SetFormatProperties(newStyle, workbook, lookUpStyleMap);
+                _cache[cacheKey] = newStyle;
+                _lastKnownStyleCount = workbook.NumCellStyles;
+
+                return newStyle;
+            }
+
+            private void RebuildCache(IWorkbook workbook)
+            {
+                _cache.Clear();
+                var count = workbook.NumCellStyles;
+                for (int i = 0; i < count; i++)
+                {
+                    var wbStyle = workbook.GetCellStyleAt(i);
+                    var wbStyleMap = GetFormatProperties(wbStyle);
+                    var key = BuildCacheKey(wbStyleMap);
+                    _cache[key] = wbStyle;
+                }
+                _lastKnownStyleCount = count;
             }
         }
     }

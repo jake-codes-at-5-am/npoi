@@ -4,6 +4,8 @@ using NPOI.XSSF.UserModel;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Text;
 
 namespace NPOI.XSSF.Util
 {
@@ -62,6 +64,9 @@ namespace NPOI.XSSF.Util
             FILL_BACKGROUND_COLOR,
         });
 
+        private static readonly ConditionalWeakTable<XSSFWorkbook, StyleLookupCache> _workbookCaches
+            = new ConditionalWeakTable<XSSFWorkbook, StyleLookupCache>();
+
         private XSSFCellUtil()
         {
         }
@@ -95,23 +100,8 @@ namespace NPOI.XSSF.Util
 
         public static ICellStyle LookUpOrCreateCellStyleInWorkbook(Dictionary<string, object> lookUpStyleMap, XSSFWorkbook workbook)
         {
-            for (var i = 0; i < workbook.NumCellStyles; i++)
-            {
-                var workbookStyle = workbook.GetCellStyleAt(i);
-                var workbookStyleMap = GetFormatProperties(workbookStyle as XSSFCellStyle);
-
-                var stylesAreEqual = CompareStyleMaps(lookUpStyleMap, workbookStyleMap);
-
-                if (stylesAreEqual)
-                {
-                    return workbookStyle;
-                }
-            }
-
-            var newStyle = workbook.CreateCellStyle();
-            SetFormatProperties(newStyle as XSSFCellStyle, workbook, lookUpStyleMap);
-
-            return newStyle;
+            var cache = _workbookCaches.GetOrCreateValue(workbook);
+            return cache.LookUpOrCreate(lookUpStyleMap, workbook);
         }
 
         public static bool CompareStyles(XSSFCellStyle styleA, XSSFCellStyle styleB)
@@ -497,6 +487,91 @@ namespace NPOI.XSSF.Util
                 .Where(x => x % 2 == 0)
                 .Select(x => Convert.ToByte(hexString.Substring(x, 2), 16))
                 .ToArray();
+        }
+
+        internal static string BuildCacheKey(Dictionary<string, object> properties)
+        {
+            var sb = new StringBuilder(256);
+            AppendProp(sb, properties, ALIGNMENT);
+            AppendProp(sb, properties, BORDER_BOTTOM);
+            AppendProp(sb, properties, BORDER_DIAGONAL);
+            AppendProp(sb, properties, BORDER_LEFT);
+            AppendProp(sb, properties, BORDER_RIGHT);
+            AppendProp(sb, properties, BORDER_TOP);
+            AppendProp(sb, properties, BOTTOM_BORDER_COLOR);
+            AppendProp(sb, properties, DATA_FORMAT);
+            AppendProp(sb, properties, FILL_BACKGROUND_COLOR);
+            AppendProp(sb, properties, FILL_FOREGROUND_COLOR);
+            AppendProp(sb, properties, FILL_PATTERN);
+            AppendProp(sb, properties, FONT);
+            AppendProp(sb, properties, HIDDEN);
+            AppendProp(sb, properties, INDENTION);
+            AppendProp(sb, properties, LEFT_BORDER_COLOR);
+            AppendProp(sb, properties, LOCKED);
+            AppendProp(sb, properties, RIGHT_BORDER_COLOR);
+            AppendProp(sb, properties, ROTATION);
+            AppendProp(sb, properties, SHRINK_TO_FIT);
+            AppendProp(sb, properties, TOP_BORDER_COLOR);
+            AppendProp(sb, properties, VERTICAL_ALIGNMENT);
+            AppendProp(sb, properties, WRAP_TEXT);
+            return sb.ToString();
+        }
+
+        private static void AppendProp(StringBuilder sb, Dictionary<string, object> properties, string key)
+        {
+            if (properties.TryGetValue(key, out var value))
+            {
+                sb.Append(value?.ToString() ?? "~");
+            }
+            else
+            {
+                sb.Append('~');
+            }
+            sb.Append('|');
+        }
+
+        private class StyleLookupCache
+        {
+            private readonly Dictionary<string, ICellStyle> _cache = new Dictionary<string, ICellStyle>();
+            private int _lastKnownStyleCount = -1;
+
+            public ICellStyle LookUpOrCreate(Dictionary<string, object> lookUpStyleMap, XSSFWorkbook workbook)
+            {
+                var currentCount = workbook.NumCellStyles;
+
+                if (_lastKnownStyleCount != currentCount)
+                {
+                    RebuildCache(workbook);
+                }
+
+                var cacheKey = BuildCacheKey(lookUpStyleMap);
+
+                if (_cache.TryGetValue(cacheKey, out var cachedStyle))
+                {
+                    return cachedStyle;
+                }
+
+                var newStyle = workbook.CreateCellStyle();
+                SetFormatProperties(newStyle as XSSFCellStyle, workbook, lookUpStyleMap);
+                _cache[cacheKey] = newStyle;
+                _lastKnownStyleCount = workbook.NumCellStyles;
+
+                return newStyle;
+            }
+
+            private void RebuildCache(XSSFWorkbook workbook)
+            {
+                _cache.Clear();
+                var count = workbook.NumCellStyles;
+                for (int i = 0; i < count; i++)
+                {
+                    var wbStyle = workbook.GetCellStyleAt(i);
+                    var wbStyleMap = GetFormatProperties(wbStyle as XSSFCellStyle);
+                    var key = BuildCacheKey(wbStyleMap);
+                    _cache[key] = wbStyle;
+                }
+                _lastKnownStyleCount = count;
+            }
         }
     }
 }
