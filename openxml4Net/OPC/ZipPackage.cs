@@ -195,8 +195,8 @@ namespace NPOI.OpenXml4Net.OPC
             while (entries.MoveNext())
             {
                 ZipEntry entry = (ZipEntry)entries.Current;
-                if (entry.Name.ToLower().Equals(
-                        ContentTypeManager.CONTENT_TYPES_PART_NAME.ToLower()))
+                if (entry.Name.Equals(
+                        ContentTypeManager.CONTENT_TYPES_PART_NAME, StringComparison.OrdinalIgnoreCase))
                 {
                     try
                     {
@@ -324,8 +324,8 @@ namespace NPOI.OpenXml4Net.OPC
             {
                 // We get an error when we parse [Content_Types].xml
                 // because it's not a valid URI.
-                if (entry.Name.ToLower().Equals(
-                        ContentTypeManager.CONTENT_TYPES_PART_NAME.ToLower()))
+                if (entry.Name.Equals(
+                        ContentTypeManager.CONTENT_TYPES_PART_NAME, StringComparison.OrdinalIgnoreCase))
                 {
                     return null;
                 }

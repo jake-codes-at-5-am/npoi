@@ -46,16 +46,14 @@ namespace NPOI.XSSF.UserModel
 
         /// <summary>
         /// Cells of this row keyed by their column indexes.
-        /// The SortedDictionary ensures that the cells are ordered by columnIndex in the ascending order.
         /// </summary>
-        private readonly SortedDictionary<int, ICell> _cells;
+        private readonly SortedList<int, ICell> _cells;
 
         /// <summary>
         /// the parent sheet
         /// </summary>
         private readonly XSSFSheet _sheet;
 
-        private readonly StylesTable _stylesSource;
         #endregion
 
         #region Public properties
@@ -230,10 +228,10 @@ namespace NPOI.XSSF.UserModel
         {
             get
             {
-                if (IsFormatted && _stylesSource != null
-                    && _stylesSource.NumCellStyles > 0)
+                if (IsFormatted && ((XSSFWorkbook)_sheet.Workbook).GetStylesSource() != null
+                    && ((XSSFWorkbook)_sheet.Workbook).GetStylesSource().NumCellStyles > 0)
                 {
-                    return _stylesSource.GetStyleAt((int)_row.s);
+                    return ((XSSFWorkbook)_sheet.Workbook).GetStylesSource().GetStyleAt((int)_row.s);
                 }
 
                 return null;
@@ -252,9 +250,9 @@ namespace NPOI.XSSF.UserModel
                 else
                 {
                     XSSFCellStyle xStyle = (XSSFCellStyle)value;
-                    xStyle.VerifyBelongsToStylesSource(_stylesSource);
+                    xStyle.VerifyBelongsToStylesSource(((XSSFWorkbook)_sheet.Workbook).GetStylesSource());
 
-                    long idx = _stylesSource.PutStyle(xStyle);
+                    long idx = ((XSSFWorkbook)_sheet.Workbook).GetStylesSource().PutStyle(xStyle);
                     _row.s = (uint)idx;
                     _row.customFormat = true;
                 }
@@ -277,7 +275,7 @@ namespace NPOI.XSSF.UserModel
         {
             _row = row;
             _sheet = sheet;
-            _cells = new SortedDictionary<int, ICell>();
+            _cells = new SortedList<int, ICell>(row.SizeOfCArray());
             if (0 < row.SizeOfCArray())
             {
                 foreach (CT_Cell c in row.c)
@@ -300,8 +298,6 @@ namespace NPOI.XSSF.UserModel
 
                 row.r = (uint)nextRowNum;
             }
-
-            _stylesSource = ((XSSFWorkbook)sheet.Workbook).GetStylesSource();
         }
         #endregion
 
@@ -536,6 +532,8 @@ namespace NPOI.XSSF.UserModel
         /// </summary>
         internal void OnDocumentWrite()
         {
+            EnsureCellRefsPopulated();
+
             // check if cells in the CT_Row are ordered
             bool isOrdered = true;
             if (_row.SizeOfCArray() != _cells.Count)
@@ -623,9 +621,31 @@ namespace NPOI.XSSF.UserModel
                 _cells.Add(kv.Key, kv.Value);
             }
 
+            // Regenerate cell reference strings released during load to save memory
+            EnsureCellRefsPopulated();
+
             // Sort CT_Cols by index asc.
             _row.c.Sort((col1, col2) => col1.r.CompareTo(col2.r));
         }
+
+        /// <summary>
+        /// Regenerates any null CT_Cell.r reference strings that were released during
+        /// load to save memory. Called before save or any operation that needs cell
+        /// reference strings (sorting, ordering checks).
+        /// </summary>
+        private void EnsureCellRefsPopulated()
+        {
+            uint rowNum = _row.r;
+            foreach (ICell cell in _cells.Values)
+            {
+                CT_Cell ct = ((XSSFCell)cell).GetCTCell();
+                if (ct.r == null)
+                {
+                    ct.r = CellReference.ConvertNumToColString(cell.ColumnIndex) + rowNum;
+                }
+            }
+        }
+
         #endregion
 
         #region IEnumerable and IComparable members
@@ -633,7 +653,7 @@ namespace NPOI.XSSF.UserModel
         /// Cell iterator over the physically defined cell
         /// </summary>
         /// <returns>an iterator over cells in this row.</returns>
-        public SortedDictionary<int, ICell>.ValueCollection.Enumerator CellIterator()
+        public IEnumerator<ICell> CellIterator()
         {
             return _cells.Values.GetEnumerator();
         }
@@ -800,12 +820,12 @@ namespace NPOI.XSSF.UserModel
 
         private int GetFirstKey()
         {
-            return _cells.Keys.Min();
+            return _cells.Keys[0];
         }
 
         private int GetLastKey()
         {
-            return _cells.Keys.Max();
+            return _cells.Keys[_cells.Count - 1];
         }
         #endregion
     }

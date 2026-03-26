@@ -809,6 +809,12 @@ namespace NPOI
                 }
             }
 
+            // === MEMORY DIAGNOSTIC ===
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+            Console.WriteLine($"[MEM-DIAG] POIXMLDocumentPart.Read: part={pp.PartName?.Name ?? "?"}, {readLater.Count} children to read, mem={GC.GetTotalMemory(false):N0}");
+            // === END ===
+
             foreach (POIXMLDocumentPart childPart in readLater)
             {
                 childPart.Read(factory, context);

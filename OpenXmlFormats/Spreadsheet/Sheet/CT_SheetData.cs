@@ -133,5 +133,18 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
                 return this.lastColumnField;
             }
         }
+
+        /// <summary>
+        /// Updates the lastColumn tracking field if the given value is larger than
+        /// the current value. Used by streaming parsers that add rows individually
+        /// rather than through the static Parse method.
+        /// </summary>
+        public void UpdateLastColumn(int cellIndex)
+        {
+            if (cellIndex > lastColumnField)
+            {
+                lastColumnField = cellIndex;
+            }
+        }
     }
 }

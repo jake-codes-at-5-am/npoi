@@ -1,4 +1,5 @@
-﻿using NPOI.SS.UserModel;
+﻿using NPOI.OpenXmlFormats.Spreadsheet;
+using NPOI.SS.UserModel;
 
 namespace NPOI.XSSF.UserModel
 {
@@ -12,7 +13,7 @@ namespace NPOI.XSSF.UserModel
         /// </summary>
         public void EnsureStyleConsideringColumnStyle()
         {
-            if ((_stylesSource != null) && (_stylesSource.NumCellStyles > 0))
+            if ((GetStylesSource() != null) && (GetStylesSource().NumCellStyles > 0))
             {
                 long idx = 0;
 

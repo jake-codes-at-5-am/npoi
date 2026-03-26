@@ -80,6 +80,13 @@ namespace NPOI.XSSF.Model
 
         private SstDocument _sstDoc;
 
+        /// <summary>
+        /// Threshold in bytes above which streaming XML parse is used instead of DOM.
+        /// This avoids loading the full shared strings XML into an XmlDocument DOM tree,
+        /// which can use 3-10x the XML size in memory.
+        /// </summary>
+        private const long StreamingParseThreshold = 1 * 1024 * 1024; // 5MB
+
         public SharedStringsTable()
             : base()
         {
@@ -92,6 +99,14 @@ namespace NPOI.XSSF.Model
             : base(part)
         {
             ReadFrom(part.GetInputStream());
+
+            // Release the decompressed ZIP entry data for the shared strings table.
+            // The data has been fully parsed into the CT_Rst object model and is no
+            // longer needed. Commit() regenerates the XML from the model during save.
+            if (part is ZipPackagePart zipPart)
+            {
+                zipPart.ReleaseZipEntryData();
+            }
         }
 
         [Obsolete("deprecated in POI 3.14, scheduled for removal in POI 3.16")]
@@ -105,20 +120,28 @@ namespace NPOI.XSSF.Model
         {
             try
             {
-                int cnt = 0;
-                XmlDocument xml = ConvertStreamToXml(is1);
-                _sstDoc = SstDocument.Parse(xml, NamespaceManager);
-                CT_Sst sst = _sstDoc.GetSst();
-                count = (int)sst.count;
-                uniqueCount = (int)sst.uniqueCount;
-                foreach (CT_Rst st in sst.si)
+                long streamLength = is1.CanSeek ? is1.Length : -1;
+
+                // === MEMORY DIAGNOSTIC ===
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Console.WriteLine($"[MEM-DIAG] SharedStringsTable.ReadFrom START: stream={streamLength:N0} bytes, threshold={StreamingParseThreshold:N0}, mode={(streamLength > StreamingParseThreshold ? "STREAMING" : "DOM")}, mem={GC.GetTotalMemory(false):N0}");
+                // === END ===
+
+                if (streamLength > StreamingParseThreshold)
                 {
-                    string key = GetKey(st);
-                    if (key != null && !stmap.ContainsKey(key))
-                        stmap.Add(key, cnt);
-                    strings.Add(st);
-                    cnt++;
+                    ReadFromStreaming(is1);
                 }
+                else
+                {
+                    ReadFromDom(is1);
+                }
+
+                // === MEMORY DIAGNOSTIC ===
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                Console.WriteLine($"[MEM-DIAG] SharedStringsTable.ReadFrom DONE: uniqueStrings={strings.Count}, mem={GC.GetTotalMemory(false):N0} bytes");
+                // === END ===
             }
             catch (XmlException e)
             {
@@ -126,8 +149,109 @@ namespace NPOI.XSSF.Model
             }
         }
 
+        /// <summary>
+        /// Original DOM-based parse for small shared string tables.
+        /// </summary>
+        private void ReadFromDom(Stream is1)
+        {
+            int cnt = 0;
+            XmlDocument xml = ConvertStreamToXml(is1);
+            _sstDoc = SstDocument.Parse(xml, NamespaceManager);
+            CT_Sst sst = _sstDoc.GetSst();
+            count = (int)sst.count;
+            uniqueCount = (int)sst.uniqueCount;
+            foreach (CT_Rst st in sst.si)
+            {
+                string key = GetKey(st);
+                if (key != null && !stmap.ContainsKey(key))
+                    stmap.Add(key, cnt);
+                strings.Add(st);
+                cnt++;
+            }
+        }
+
+        /// <summary>
+        /// Streaming XmlReader-based parse for large shared string tables.
+        /// Avoids loading the entire SST XML into an XmlDocument DOM tree, which
+        /// can use 3-10x the raw XML size in memory. Instead, each individual
+        /// &lt;si&gt; element is parsed as a small DOM subtree.
+        /// </summary>
+        private void ReadFromStreaming(Stream is1)
+        {
+            _sstDoc = new SstDocument();
+            _sstDoc.AddNewSst();
+            CT_Sst sst = _sstDoc.GetSst();
+
+            var readerSettings = new XmlReaderSettings
+            {
+                XmlResolver = null,
+#pragma warning disable CS0618 // ProhibitDtd is obsolete but needed for older .NET targets
+                ProhibitDtd = true,
+#pragma warning restore CS0618
+                CloseInput = false
+            };
+
+            int cnt = 0;
+            XmlDocument siDoc = new XmlDocument();
+
+            using (XmlReader reader = XmlReader.Create(is1, readerSettings))
+            {
+                bool needsRead = true;
+                while (needsRead ? reader.Read() : !reader.EOF)
+                {
+                    needsRead = true;
+
+                    if (reader.NodeType == XmlNodeType.Element)
+                    {
+                        if (reader.LocalName == "sst")
+                        {
+                            string countStr = reader.GetAttribute("count");
+                            string uniqueStr = reader.GetAttribute("uniqueCount");
+                            if (countStr != null && int.TryParse(countStr, out int c))
+                                count = c;
+                            if (uniqueStr != null && int.TryParse(uniqueStr, out int uc))
+                                uniqueCount = uc;
+
+                            sst.count = count;
+                            sst.uniqueCount = uniqueCount;
+
+                            // Pre-allocate with known capacity
+                            if (uniqueCount > 0)
+                            {
+                                strings = new List<CT_Rst>(uniqueCount);
+                                stmap = new Dictionary<string, int>(uniqueCount);
+                            }
+                            // "sst" is a container element — let Read() advance into children
+                        }
+                        else if (reader.LocalName == "si")
+                        {
+                            // Read the <si> subtree into a small XmlDocument for CT_Rst.Parse
+
+                            siDoc.RemoveAll();
+                            siDoc.LoadXml(reader.ReadOuterXml());
+
+                            CT_Rst rst = CT_Rst.Parse(siDoc.DocumentElement, NamespaceManager);
+                            string key = GetKey(rst);
+                            if (key != null && !stmap.ContainsKey(key))
+                                stmap.Add(key, cnt);
+                            strings.Add(rst);
+                            sst.si.Add(rst);
+                            cnt++;
+                            needsRead = false; // ReadOuterXml already advanced
+                        }
+                    }
+                }
+            }
+        }
+
         private String GetKey(CT_Rst st)
         {
+            // Optimization: for simple strings (no rich text), use the t field directly.
+            // This avoids building and caching the full XmlText representation.
+            if (st.IsSetT() && st.sizeOfRArray() == 0)
+            {
+                return st.t;
+            }
             return st.XmlText;
         }
 
@@ -215,9 +339,9 @@ namespace NPOI.XSSF.Model
         }
 
         /**
-         * 
+         *
          * this table out as XML.
-         * 
+         *
          * @param out The stream to write to.
          * @throws IOException if an error occurs while writing.
          */
@@ -246,9 +370,3 @@ namespace NPOI.XSSF.Model
         }
     }
 }
-
-
-
-
-
-
