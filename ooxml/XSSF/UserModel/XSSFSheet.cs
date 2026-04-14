@@ -1275,12 +1275,6 @@ namespace NPOI.XSSF.UserModel
             {
                 long streamLength = is1.CanSeek ? is1.Length : -1;
 
-                // === MEMORY DIAGNOSTIC ===
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Console.WriteLine($"[MEM-DIAG] XSSFSheet.Read START: stream={streamLength:N0} bytes, threshold={StreamingParseThreshold:N0}, mode={(streamLength > StreamingParseThreshold ? "STREAMING" : "DOM")}, mem={GC.GetTotalMemory(false):N0}");
-                // === END ===
-
                 if (streamLength > StreamingParseThreshold)
                 {
                     ReadStreaming(is1);
@@ -1288,11 +1282,6 @@ namespace NPOI.XSSF.UserModel
                 else
                 {
                     XmlDocument doc = ConvertStreamToXml(is1);
-                    // === MEMORY DIAGNOSTIC ===
-                    GC.Collect();
-                    GC.WaitForPendingFinalizers();
-                    Console.WriteLine($"[MEM-DIAG] XSSFSheet.Read: after ConvertStreamToXml (DOM built): {GC.GetTotalMemory(false):N0} bytes");
-                    // === END ===
                     worksheet = WorksheetDocument.Parse(doc, NamespaceManager).GetWorksheet();
                 }
             }
@@ -1301,25 +1290,7 @@ namespace NPOI.XSSF.UserModel
                 throw new POIXMLException(e);
             }
 
-            // === MEMORY DIAGNOSTIC ===
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            int rowCount = worksheet?.sheetData?.SizeOfRowArray() ?? 0;
-            int cellCount = 0;
-            if (worksheet?.sheetData?.row != null)
-                foreach (var r in worksheet.sheetData.row)
-                    cellCount += r.SizeOfCArray();
-            Console.WriteLine($"[MEM-DIAG] XSSFSheet.Read: after parse, before InitRows: rows={rowCount}, cells={cellCount}, mem={GC.GetTotalMemory(false):N0} bytes");
-            // === END ===
-
             InitRows(worksheet);
-
-            // === MEMORY DIAGNOSTIC ===
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            Console.WriteLine($"[MEM-DIAG] XSSFSheet.Read: after InitRows (XSSFRow+XSSFCell wrappers created): {GC.GetTotalMemory(false):N0} bytes");
-            // === END ===
-
             InitColumns(worksheet);
 
             // Look for bits we're interested in

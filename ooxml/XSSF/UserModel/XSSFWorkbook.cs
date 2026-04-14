@@ -203,27 +203,10 @@ namespace NPOI.XSSF.UserModel
         public XSSFWorkbook(OPCPackage pkg)
             : base(pkg)
         {
-            // === MEMORY DIAGNOSTIC ===
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            Console.WriteLine($"[MEM-DIAG] XSSFWorkbook ctor: before BeforeDocumentRead: {GC.GetTotalMemory(false):N0} bytes");
-            // === END ===
             BeforeDocumentRead();
-
-            // === MEMORY DIAGNOSTIC ===
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            Console.WriteLine($"[MEM-DIAG] XSSFWorkbook ctor: before Load(factory): {GC.GetTotalMemory(false):N0} bytes");
-            // === END ===
 
             //build a tree of POIXMLDocumentParts, this workbook being the root
             Load(XSSFFactory.GetInstance());
-
-            // === MEMORY DIAGNOSTIC ===
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            Console.WriteLine($"[MEM-DIAG] XSSFWorkbook ctor: after Load(factory): {GC.GetTotalMemory(false):N0} bytes");
-            // === END ===
 
             // some broken Workbooks miss this...
             if (!workbook.IsSetBookViews())
@@ -346,12 +329,6 @@ namespace NPOI.XSSF.UserModel
                 doc = WorkbookDocument.Parse(xmldoc, NamespaceManager);
                 this.workbook = doc.Workbook;
 
-                // === MEMORY DIAGNOSTIC ===
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Console.WriteLine($"[MEM-DIAG] OnDocumentRead: after parsing workbook.xml, before relation parts: {GC.GetTotalMemory(false):N0} bytes");
-                // === END ===
-
                 ThemesTable theme = null;
                 Dictionary<String, XSSFSheet> shIdMap = new Dictionary<String, XSSFSheet>();
                 Dictionary<String, ExternalLinksTable> elIdMap = new Dictionary<String, ExternalLinksTable>();
@@ -403,12 +380,6 @@ namespace NPOI.XSSF.UserModel
                     }
                 }
 
-                // === MEMORY DIAGNOSTIC ===
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Console.WriteLine($"[MEM-DIAG] OnDocumentRead: before ParseSheet loop ({shIdMap.Count} sheets): {GC.GetTotalMemory(false):N0} bytes");
-                // === END ===
-
                 // Load individual sheets. The order of sheets is defined by the order
                 //  of CTSheet elements in the workbook
                 sheets = new List<XSSFSheet>(shIdMap.Count);
@@ -417,12 +388,6 @@ namespace NPOI.XSSF.UserModel
                     ParseSheet(shIdMap, ctSheet);
 
                 }
-
-                // === MEMORY DIAGNOSTIC ===
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Console.WriteLine($"[MEM-DIAG] OnDocumentRead: after ParseSheet loop: {GC.GetTotalMemory(false):N0} bytes");
-                // === END ===
 
                 // Load the external links tables. Their order is defined by the order 
                 //  of CTExternalReference elements in the workbook

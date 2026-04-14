@@ -122,12 +122,6 @@ namespace NPOI.XSSF.Model
             {
                 long streamLength = is1.CanSeek ? is1.Length : -1;
 
-                // === MEMORY DIAGNOSTIC ===
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Console.WriteLine($"[MEM-DIAG] SharedStringsTable.ReadFrom START: stream={streamLength:N0} bytes, threshold={StreamingParseThreshold:N0}, mode={(streamLength > StreamingParseThreshold ? "STREAMING" : "DOM")}, mem={GC.GetTotalMemory(false):N0}");
-                // === END ===
-
                 if (streamLength > StreamingParseThreshold)
                 {
                     ReadFromStreaming(is1);
@@ -136,12 +130,6 @@ namespace NPOI.XSSF.Model
                 {
                     ReadFromDom(is1);
                 }
-
-                // === MEMORY DIAGNOSTIC ===
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Console.WriteLine($"[MEM-DIAG] SharedStringsTable.ReadFrom DONE: uniqueStrings={strings.Count}, mem={GC.GetTotalMemory(false):N0} bytes");
-                // === END ===
             }
             catch (XmlException e)
             {

@@ -29,13 +29,6 @@ namespace NPOI.OpenXml4Net.Util
         {
             zipEntries = new List<FakeZipEntry>();
 
-            // === MEMORY DIAGNOSTIC ===
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            long memStart = GC.GetTotalMemory(false);
-            Console.WriteLine($"[MEM-DIAG] ZipEntrySource: START decompressing ZIP entries, mem={memStart:N0}");
-            // === END ===
-
             try
             {
                 ZipEntry zipEntry;
@@ -43,10 +36,6 @@ namespace NPOI.OpenXml4Net.Util
                 {
                     FakeZipEntry entry = new FakeZipEntry(zipEntry, inp);
                     zipEntries.Add(entry);
-
-                    // === MEMORY DIAGNOSTIC ===
-                    Console.WriteLine($"[MEM-DIAG] ZipEntrySource: decompressed '{entry.Name}' size={entry.GetInputStream().Length:N0} bytes");
-                    // === END ===
                 }
             }
             catch
@@ -64,13 +53,6 @@ namespace NPOI.OpenXml4Net.Util
             {
                 inp.Close();
             }
-
-            // === MEMORY DIAGNOSTIC ===
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-            long memEnd = GC.GetTotalMemory(false);
-            Console.WriteLine($"[MEM-DIAG] ZipEntrySource: DONE, {zipEntries.Count} entries, total decompressed mem delta={memEnd - memStart:N0} bytes, mem={memEnd:N0}");
-            // === END ===
         }
 
         /// <summary>

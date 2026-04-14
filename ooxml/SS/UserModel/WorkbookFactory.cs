@@ -133,19 +133,7 @@ namespace NPOI.SS.UserModel
             inputStream.Position = 0;
             if (DocumentFactoryHelper.HasOOXMLHeader(inputStream))
             {
-                // === MEMORY DIAGNOSTIC ===
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Console.WriteLine($"[MEM-DIAG] Before OPCPackage.Open: {GC.GetTotalMemory(false):N0} bytes");
-                // === END ===
                 OPCPackage pkg = OPCPackage.Open(inputStream, readOnly);
-
-                // === MEMORY DIAGNOSTIC ===
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                Console.WriteLine($"[MEM-DIAG] After OPCPackage.Open (ZIP decompressed): {GC.GetTotalMemory(false):N0} bytes");
-                // === END ===
-
                 return new XSSFWorkbook(pkg);
             }
             throw new InvalidFormatException("Your stream was neither an OLE2 stream, nor an OOXML stream.");
