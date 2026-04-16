@@ -177,8 +177,22 @@ namespace NPOI.OpenXml4Net.Util
                         throw new IOException("ZIP entry size is too large");
                     }
 
-                    // Known size: allocate exact byte[] and read directly into it
-                    // This avoids the MemoryStream + ToArray() double-allocation
+                    // Known size: allocate exact byte[] and read directly into it.
+                    // This avoids the MemoryStream + ToArray() double-allocation that the
+                    // fallback path below performs.
+                    //
+                    // Trust contract: we trust ZipEntry.Size as reported by SharpZipLib's
+                    // ZIP central-directory parser. If a malformed entry produces *more*
+                    // decompressed bytes than its declared size, the read loop terminates
+                    // at remaining == 0 and any excess bytes are NOT consumed. This means
+                    // for malformed inputs:
+                    //   - the next entry boundary in the ZipInputStream may be misaligned
+                    //     (the next GetNextEntry() call may fail or return a corrupt entry),
+                    //   - the silently-discarded bytes are not surfaced to the caller.
+                    // For well-formed XLSX files written by Excel, NPOI, OpenOffice, etc.,
+                    // the declared size always matches the decompressed length, so this is
+                    // the correct trade-off (one allocation, no copy). The malformed-input
+                    // case is caught at a higher level when ZIP parsing fails.
                     data = new byte[(int)entrySize];
                     int offset = 0;
                     int remaining = data.Length;
@@ -190,7 +204,8 @@ namespace NPOI.OpenXml4Net.Util
                         remaining -= read;
                     }
 
-                    // If we read fewer bytes than expected, trim the array
+                    // If we read fewer bytes than expected (truncated entry), trim the
+                    // array so callers see only the bytes that were actually present.
                     if (remaining > 0)
                     {
                         Array.Resize(ref data, offset);

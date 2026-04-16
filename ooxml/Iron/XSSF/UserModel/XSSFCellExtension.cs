@@ -13,26 +13,26 @@ namespace NPOI.XSSF.UserModel
         /// </summary>
         public void EnsureStyleConsideringColumnStyle()
         {
-            if ((GetStylesSource() != null) && (GetStylesSource().NumCellStyles > 0))
+            var styles = GetStylesSource();
+            if (styles == null || styles.NumCellStyles == 0)
+                return;
+
+            long idx = 0;
+            if (_cell.IsSetS())
             {
-                long idx = 0;
-
-                if (_cell.IsSetS())
-                {
-                    idx = _cell.s;
-                }
-                else if (Sheet.GetColumnStyle(ColumnIndex) != null)
-                {
-                    idx = Sheet.GetColumnStyle(ColumnIndex).Index;
-                }
-
-                if (_cell.IsSetS())
-                {
-                    _cell.unsetS();
-                }
-
-                _cell.s = (uint)idx;
+                idx = _cell.s;
             }
+            else if (Sheet.GetColumnStyle(ColumnIndex) != null)
+            {
+                idx = Sheet.GetColumnStyle(ColumnIndex).Index;
+            }
+
+            if (_cell.IsSetS())
+            {
+                _cell.unsetS();
+            }
+
+            _cell.s = (uint)idx;
         }
     }
 }

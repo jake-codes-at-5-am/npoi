@@ -85,7 +85,7 @@ namespace NPOI.XSSF.Model
         /// This avoids loading the full shared strings XML into an XmlDocument DOM tree,
         /// which can use 3-10x the XML size in memory.
         /// </summary>
-        private const long StreamingParseThreshold = 1 * 1024 * 1024; // 5MB
+        private const long StreamingParseThreshold = 1 * 1024 * 1024; // 1MB
 
         public SharedStringsTable()
             : base()

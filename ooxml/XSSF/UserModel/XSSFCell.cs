@@ -88,7 +88,7 @@ namespace NPOI.XSSF.UserModel
                 {
                     _cellNum = (row as XSSFRow).GetCell(prevNum - 1, MissingCellPolicy.RETURN_NULL_AND_BLANK).ColumnIndex + 1;
                 }
-            }  
+            }
         }
 
         /// <summary>
@@ -522,9 +522,11 @@ namespace NPOI.XSSF.UserModel
                     {
                         _cell.t = ST_CellType.s;
                         XSSFRichTextString rt = (XSSFRichTextString)str;
-                        rt.SetStylesTableReference(GetStylesSource());
-                        int sRef = GetSharedStringSource().AddEntry(rt.GetCTRst());
-                        _cell.v=sRef.ToString();
+                        var styles = GetStylesSource();
+                        var sst = GetSharedStringSource();
+                        rt.SetStylesTableReference(styles);
+                        int sRef = sst.AddEntry(rt.GetCTRst());
+                        _cell.v = sRef.ToString();
                     }
                     break;
             }
@@ -748,26 +750,26 @@ namespace NPOI.XSSF.UserModel
         {
             get
             {
-                XSSFCellStyle style = null;
-                if ((null != GetStylesSource()) && (GetStylesSource().NumCellStyles > 0))
-                {
-                    long idx = _cell.IsSetS() ? _cell.s : 0;
-                    style = GetStylesSource().GetStyleAt((int)idx);
-                }
-                return style;
+                var styles = GetStylesSource();
+                if (styles == null || styles.NumCellStyles == 0)
+                    return null;
+                long idx = _cell.IsSetS() ? _cell.s : 0;
+                return styles.GetStyleAt((int)idx);
             }
-            set 
+            set
             {
                 if (value == null)
                 {
-                    if (_cell.IsSetS()) _cell.unsetS();
+                    if (_cell.IsSetS())
+                        _cell.unsetS();
                 }
                 else
                 {
                     XSSFCellStyle xStyle = (XSSFCellStyle)value;
-                    xStyle.VerifyBelongsToStylesSource(GetStylesSource());
+                    var styles = GetStylesSource();
+                    xStyle.VerifyBelongsToStylesSource(styles);
 
-                    long idx = GetStylesSource().PutStyle(xStyle);
+                    long idx = styles.PutStyle(xStyle);
                     _cell.s = (uint)idx;
                 }
             }
@@ -1063,11 +1065,13 @@ namespace NPOI.XSSF.UserModel
                     {
                         String str = ConvertCellValueToString();
                         XSSFRichTextString rt = new XSSFRichTextString(str);
-                        rt.SetStylesTableReference(GetStylesSource());
-                        int sRef = GetSharedStringSource().AddEntry(rt.GetCTRst());
-                        _cell.v= sRef.ToString();
+                        var styles = GetStylesSource();
+                        var sst = GetSharedStringSource();
+                        rt.SetStylesTableReference(styles);
+                        int sRef = sst.AddEntry(rt.GetCTRst());
+                        _cell.v = sRef.ToString();
                     }
-                    _cell.t= (ST_CellType.s);
+                    _cell.t = (ST_CellType.s);
                     break;
                 case CellType.Formula:
                     if (!_cell.IsSetF())

@@ -1267,7 +1267,7 @@ namespace NPOI.XSSF.UserModel
         /// This avoids loading the full sheet XML into an XmlDocument DOM tree, which
         /// can use 3-10x the raw XML size in memory for large sheets.
         /// </summary>
-        private const long StreamingParseThreshold = 1 * 1024 * 1024; // 10MB
+        private const long StreamingParseThreshold = 1 * 1024 * 1024; // 1MB
 
         internal virtual void Read(Stream is1)
         {
@@ -1460,8 +1460,68 @@ namespace NPOI.XSSF.UserModel
                         case "worksheet":
                             // Root element - just let the loop advance into its children
                             break;
+                        case "sheetCalcPr":
+                            worksheet.sheetCalcPr = ParseSubtreeElement<CT_SheetCalcPr>(reader, CT_SheetCalcPr.Parse);
+                            needsRead = false;
+                            break;
+                        case "protectedRanges":
+                            worksheet.protectedRanges = ParseSubtreeElement<CT_ProtectedRanges>(reader, CT_ProtectedRanges.Parse);
+                            needsRead = false;
+                            break;
+                        case "scenarios":
+                            worksheet.scenarios = ParseSubtreeElement<CT_Scenarios>(reader, CT_Scenarios.Parse);
+                            needsRead = false;
+                            break;
+                        case "customSheetViews":
+                            worksheet.customSheetViews = ParseSubtreeElement<CT_CustomSheetViews>(reader, CT_CustomSheetViews.Parse);
+                            needsRead = false;
+                            break;
+                        case "customProperties":
+                            worksheet.customProperties = ParseSubtreeElement<CT_CustomProperties>(reader, CT_CustomProperties.Parse);
+                            needsRead = false;
+                            break;
+                        case "cellWatches":
+                            worksheet.cellWatches = ParseSubtreeElement<CT_CellWatches>(reader, CT_CellWatches.Parse);
+                            needsRead = false;
+                            break;
+                        case "ignoredErrors":
+                            worksheet.ignoredErrors = ParseSubtreeElement<CT_IgnoredErrors>(reader, CT_IgnoredErrors.Parse);
+                            needsRead = false;
+                            break;
+                        case "smartTags":
+                            worksheet.smartTags = ParseSubtreeElement<CT_CellSmartTags>(reader, CT_CellSmartTags.Parse);
+                            needsRead = false;
+                            break;
+                        case "legacyDrawingHF":
+                            worksheet.legacyDrawingHF = ParseSubtreeElement<CT_LegacyDrawing>(reader, CT_LegacyDrawing.Parse);
+                            needsRead = false;
+                            break;
+                        case "picture":
+                            worksheet.picture = ParseSubtreeElement<CT_SheetBackgroundPicture>(reader, CT_SheetBackgroundPicture.Parse);
+                            needsRead = false;
+                            break;
+                        case "oleObjects":
+                            worksheet.oleObjects = ParseSubtreeElement<CT_OleObjects>(reader, CT_OleObjects.Parse);
+                            needsRead = false;
+                            break;
+                        case "controls":
+                            worksheet.controls = ParseSubtreeElement<CT_Controls>(reader, CT_Controls.Parse);
+                            needsRead = false;
+                            break;
+                        case "webPublishItems":
+                            worksheet.webPublishItems = ParseSubtreeElement<CT_WebPublishItems>(reader, CT_WebPublishItems.Parse);
+                            needsRead = false;
+                            break;
+                        case "dataConsolidate":
+                            worksheet.dataConsolidate = ParseSubtreeElement<CT_DataConsolidate>(reader, CT_DataConsolidate.Parse);
+                            needsRead = false;
+                            break;
                         default:
-                            // Unknown element - skip it entirely (advances reader past it)
+                            // Unknown element. Log at debug for diagnostics and skip over the
+                            // subtree so the reader is not left mid-parse. This matches the
+                            // forward-compat behaviour of the DOM path which also drops nodes
+                            // without matching CT_ properties.
+                            logger.Log(POILogger.DEBUG, "ReadStreaming: unhandled sheet element <" + reader.LocalName + "> skipped");
                             reader.Skip();
                             needsRead = false;
                             break;

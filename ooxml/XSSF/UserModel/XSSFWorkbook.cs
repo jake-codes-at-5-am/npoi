@@ -386,7 +386,6 @@ namespace NPOI.XSSF.UserModel
                 foreach (CT_Sheet ctSheet in this.workbook.sheets.sheet)
                 {
                     ParseSheet(shIdMap, ctSheet);
-
                 }
 
                 // Load the external links tables. Their order is defined by the order 

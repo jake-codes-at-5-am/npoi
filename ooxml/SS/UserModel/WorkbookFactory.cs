@@ -133,8 +133,7 @@ namespace NPOI.SS.UserModel
             inputStream.Position = 0;
             if (DocumentFactoryHelper.HasOOXMLHeader(inputStream))
             {
-                OPCPackage pkg = OPCPackage.Open(inputStream, readOnly);
-                return new XSSFWorkbook(pkg);
+                return new XSSFWorkbook(OPCPackage.Open(inputStream, readOnly));
             }
             throw new InvalidFormatException("Your stream was neither an OLE2 stream, nor an OOXML stream.");
         }

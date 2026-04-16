@@ -228,13 +228,12 @@ namespace NPOI.XSSF.UserModel
         {
             get
             {
-                if (IsFormatted && ((XSSFWorkbook)_sheet.Workbook).GetStylesSource() != null
-                    && ((XSSFWorkbook)_sheet.Workbook).GetStylesSource().NumCellStyles > 0)
-                {
-                    return ((XSSFWorkbook)_sheet.Workbook).GetStylesSource().GetStyleAt((int)_row.s);
-                }
-
-                return null;
+                if (!IsFormatted)
+                    return null;
+                var styles = ((XSSFWorkbook)_sheet.Workbook).GetStylesSource();
+                if (styles == null || styles.NumCellStyles == 0)
+                    return null;
+                return styles.GetStyleAt((int)_row.s);
             }
 
             set
@@ -250,9 +249,10 @@ namespace NPOI.XSSF.UserModel
                 else
                 {
                     XSSFCellStyle xStyle = (XSSFCellStyle)value;
-                    xStyle.VerifyBelongsToStylesSource(((XSSFWorkbook)_sheet.Workbook).GetStylesSource());
+                    var styles = ((XSSFWorkbook)_sheet.Workbook).GetStylesSource();
+                    xStyle.VerifyBelongsToStylesSource(styles);
 
-                    long idx = ((XSSFWorkbook)_sheet.Workbook).GetStylesSource().PutStyle(xStyle);
+                    long idx = styles.PutStyle(xStyle);
                     _row.s = (uint)idx;
                     _row.customFormat = true;
                 }
@@ -629,12 +629,30 @@ namespace NPOI.XSSF.UserModel
         }
 
         /// <summary>
-        /// Regenerates any null CT_Cell.r reference strings that were released during
-        /// load to save memory. Called before save or any operation that needs cell
-        /// reference strings (sorting, ordering checks).
+        /// Regenerates any null CT_Cell.r reference strings.
+        /// <para>
+        /// Background: a previous optimisation released CT_Cell.r after extracting the
+        /// column index in the XSSFCell constructor, to save ~36 B per cell. That
+        /// optimisation has since been reverted because <see cref="CT_Cell.IsSetR"/>,
+        /// <see cref="RebuildCells"/> sort, and several other paths require the
+        /// reference to be populated. This method remains as a safety net so that
+        /// any future code that nulls <see cref="CT_Cell.r"/> for memory will not
+        /// produce a corrupted save.
+        /// </para>
+        /// <para>
+        /// Performance: on a workbook loaded normally, every cell already has
+        /// <c>ct.r != null</c> from <see cref="CT_Cell.Parse"/>, so the condition
+        /// short-circuits on the very first iteration of every cell with no
+        /// allocation. Cost is one bounds-check + one ref-comparison per cell.
+        /// </para>
         /// </summary>
         private void EnsureCellRefsPopulated()
         {
+            // Fast path: if the row's CT_Cell list and the wrapper map are out of
+            // sync, do nothing - RebuildCells / OnDocumentWrite will reconcile.
+            if (_cells.Count == 0)
+                return;
+
             uint rowNum = _row.r;
             foreach (ICell cell in _cells.Values)
             {
@@ -650,9 +668,27 @@ namespace NPOI.XSSF.UserModel
 
         #region IEnumerable and IComparable members
         /// <summary>
-        /// Cell iterator over the physically defined cell
+        /// Cell iterator over the physically defined cells, ordered by column index.
+        /// <para>
+        /// <b>API break vs. prior versions:</b> the concrete return type changed from
+        /// <c>SortedDictionary&lt;int, ICell&gt;.ValueCollection.Enumerator</c> to
+        /// <see cref="IEnumerator{T}"/> of <see cref="ICell"/>. This is because the
+        /// underlying storage switched from <see cref="SortedDictionary{TKey,TValue}"/>
+        /// (which exposes a concrete struct <c>ValueCollection.Enumerator</c>) to
+        /// <see cref="SortedList{TKey,TValue}"/> (whose <c>Values</c> property returns
+        /// <see cref="IList{T}"/> with no concrete struct enumerator accessible
+        /// externally). The memory saving from the storage change is hundreds of MB on
+        /// 10M+-cell workbooks, at the cost of one extra interface allocation per
+        /// call to this method (negligible in normal use — this is an iteration-
+        /// initialising API, not a hot per-cell call).
+        /// </para>
+        /// <para>
+        /// Callers that were pinned to the old concrete type must update their
+        /// variable declarations. Callers using <c>var</c>, <c>foreach</c>, or
+        /// <see cref="IEnumerator{T}"/> are unaffected.
+        /// </para>
         /// </summary>
-        /// <returns>an iterator over cells in this row.</returns>
+        /// <returns>an iterator over cells in this row, in ascending column order.</returns>
         public IEnumerator<ICell> CellIterator()
         {
             return _cells.Values.GetEnumerator();

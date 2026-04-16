@@ -59,8 +59,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
                 return null;
             CT_Row ctObj = new CT_Row();
             ctObj.r = XmlHelper.ReadUInt(node.Attributes["r"]);
-            string rawSpans = XmlHelper.ReadString(node.Attributes["spans"]);
-            ctObj.spans = rawSpans != null ? string.Intern(rawSpans) : null;
+            ctObj.spans = XmlHelper.ReadString(node.Attributes["spans"]);
             ctObj.s = XmlHelper.ReadUInt(node.Attributes["s"]);
             ctObj.customFormat = XmlHelper.ReadBool(node.Attributes["customFormat"]);
             ctObj.dyDescentField = XmlHelper.ReadDouble(node.Attributes["x14ac:dyDescent"]);
