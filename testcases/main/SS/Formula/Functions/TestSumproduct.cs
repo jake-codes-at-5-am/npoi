@@ -121,6 +121,65 @@ namespace TestCases.SS.Formula.Functions
             ValueEval[] args = { aeA, aeB, };
             Assert.AreEqual(ErrorEval.REF_INVALID, invokeSumproduct(args));
         }
+
+        // ───── ErrorEval propagation regression tests ─────
+        // Pre-fix, passing an ErrorEval directly as a SUMPRODUCT argument crashed
+        // with NPOI.Util.RuntimeException: "Invalid arg type for SUMPRODUCT (ErrorEval)".
+        // Excel itself returns the error. These tests pin that behaviour so it
+        // cannot silently regress.
+
+        [Test]
+        public void TestErrorEvalAsFirstArgPropagates()
+        {
+            ValueEval result = invokeSumproduct(new ValueEval[] { ErrorEval.REF_INVALID, new NumberEval(5) });
+            Assert.AreEqual(ErrorEval.REF_INVALID, result, "first error must propagate as the result");
+        }
+
+        [Test]
+        public void TestErrorEvalAsLaterArgPropagates()
+        {
+            // Second argument is the error; first is a normal numeric scalar.
+            ValueEval result = invokeSumproduct(new ValueEval[] { new NumberEval(5), ErrorEval.NA });
+            Assert.AreEqual(ErrorEval.NA, result);
+        }
+
+        [Test]
+        public void TestErrorEvalThroughRefArgPropagates()
+        {
+            // ErrorEval delivered through a RefEval (the realistic path —
+            // a referenced cell whose own formula evaluated to #DIV/0!).
+            RefEval r = EvalFactory.CreateRefEval("A1", ErrorEval.DIV_ZERO);
+            ValueEval result = invokeSumproduct(new ValueEval[] { r, new NumberEval(2) });
+            Assert.AreEqual(ErrorEval.DIV_ZERO, result);
+        }
+
+        [Test]
+        public void TestUnsupportedArgKindReturnsValueErrorNotRuntimeException()
+        {
+            // StringEval at the top level previously fell through to the
+            // "Invalid arg type for SUMPRODUCT" RuntimeException. After the fix
+            // it returns #VALUE! the way Excel does. (BoolEval is a NumericValueEval
+            // so it works as 0/1; StringEval is the actual unsupported case.)
+            ValueEval result = invokeSumproduct(new ValueEval[] { new StringEval("hello") });
+            Assert.AreEqual(ErrorEval.VALUE_INVALID, result);
+        }
+
+        [Test]
+        public void TestEmptyArgListReturnsValueError()
+        {
+            Assert.AreEqual(ErrorEval.VALUE_INVALID, invokeSumproduct(new ValueEval[0]));
+        }
+
+        [Test]
+        public void TestMultipleErrorsReturnFirst()
+        {
+            // When multiple args are errors, propagate the first (left-to-right) —
+            // matches Excel's evaluation order.
+            ValueEval result = invokeSumproduct(new ValueEval[] {
+                ErrorEval.NUM_ERROR, ErrorEval.NA, ErrorEval.REF_INVALID
+            });
+            Assert.AreEqual(ErrorEval.NUM_ERROR, result);
+        }
     }
 
 }

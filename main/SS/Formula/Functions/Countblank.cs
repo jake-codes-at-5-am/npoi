@@ -45,9 +45,15 @@ namespace NPOI.SS.Formula.Functions
             {
                 result = CountUtils.CountMatchingCellsInArea((ThreeDEval)arg0, predicate);
             }
+            else if (arg0 is ErrorEval errEval)
+            {
+                // Errors arriving through cached formula results must propagate
+                // (matches Excel) rather than abort the evaluator.
+                return errEval;
+            }
             else
             {
-                throw new ArgumentException("Bad range arg type (" + arg0.GetType().Name + ")");
+                return ErrorEval.VALUE_INVALID;
             }
             return new NumberEval(result);
         }
