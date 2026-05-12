@@ -25,15 +25,25 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
 
         private string rField = null;
 
-        private uint? sField = null;
+        // Memory optimization: replaced nullable fields (uint?, ST_CellType?, bool?)
+        // with plain value-type fields. Each Nullable<T> costs 8-12 bytes due to the
+        // hasValue flag + alignment padding. For 150K cells, this saves ~5 MB.
+        //
+        // Behavioral equivalence:
+        //   - IsSetS() checked (sField != null && sField != 0)  →  now checks (sField != 0)
+        //     Both are equivalent: unsetS() sets to 0, Parse sets 0 when attribute absent.
+        //   - IsSetT() checked (tField != ST_CellType.n)  →  unchanged logic
+        //   - The s/cm/vm/ph property getters returned default when null; now return field directly.
+        //   - Write() uses value-based checks (== 0, == false), not null checks — unchanged.
+        private uint sField;
 
-        private ST_CellType? tField = null;
+        private ST_CellType tField = ST_CellType.n;
 
-        private uint? cmField = null;
+        private uint cmField;
 
-        private uint? vmField = null;
+        private uint vmField;
 
-        private bool? phField = null;
+        private bool phField;
 
         public static CT_Cell Parse(XmlNode node, XmlNamespaceManager namespaceManager)
         {
@@ -100,17 +110,6 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         }
 
 
-        //public CT_Cell()
-        //{
-        //    this.extLstField = new CT_ExtensionList();
-        //    //this.isField = new CT_Rst();
-        //    //this.fField = new CT_CellFormula();
-        //    this.sField = (uint)(0);
-        //    this.tField = ST_CellType.n;
-        //    this.cmField = ((uint)(0));
-        //    this.vmField = ((uint)(0));
-        //    this.phField = false;
-        //}
         public void Set(CT_Cell cell)
         {
             fField = cell.fField;
@@ -130,7 +129,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         }
         public bool IsSetS()
         {
-            return sField != null && sField != 0;
+            return sField != 0;
         }
         public bool IsSetF()
         {
@@ -242,7 +241,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return null == sField ? 0 : (uint)this.sField;
+                return this.sField;
             }
             set
             {
@@ -255,7 +254,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return null == tField ? ST_CellType.n : (ST_CellType)this.tField;
+                return this.tField;
             }
             set
             {
@@ -268,7 +267,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return null == cmField ? 0 : (uint)this.cmField;
+                return this.cmField;
             }
             set
             {
@@ -281,7 +280,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return null == vmField ? 0 : (uint)this.vmField;
+                return this.vmField;
             }
             set
             {
@@ -294,7 +293,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return null == phField ? false : (bool)this.phField;
+                return this.phField;
             }
             set
             {

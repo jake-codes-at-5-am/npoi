@@ -244,16 +244,24 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         public static CT_Rst Parse(XmlNode node, XmlNamespaceManager namespaceManager)
         {
             CT_Rst ctObj = new CT_Rst();
-            ctObj.r = new List<CT_RElt>();
-            ctObj.rPh = new List<CT_PhoneticRun>();
+            // Lazy-initialize lists only when elements are found.
+            // Most shared string entries only have <t> text with no rich text runs
+            // or phonetic runs, so avoiding empty List allocations saves significant
+            // memory when there are many unique strings (40 bytes per empty List<T>).
             foreach (XmlNode childNode in node.ChildNodes)
             {
                 if (childNode.LocalName == "phoneticPr")
                     ctObj.phoneticPr = CT_PhoneticPr.Parse(childNode, namespaceManager);
                 else if (childNode.LocalName == "r")
+                {
+                    if (ctObj.r == null) ctObj.r = new List<CT_RElt>();
                     ctObj.r.Add(CT_RElt.Parse(childNode, namespaceManager));
+                }
                 else if (childNode.LocalName == "rPh")
+                {
+                    if (ctObj.rPh == null) ctObj.rPh = new List<CT_PhoneticRun>();
                     ctObj.rPh.Add(CT_PhoneticRun.Parse(childNode, namespaceManager));
+                }
                 else if (childNode.LocalName == "t")
                     ctObj.t = childNode.InnerText.Replace("\r", "");
             }
@@ -262,7 +270,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
 
         public int SizeOfRArray()
         {
-            return r.Count;
+            return (null == rField) ? 0 : r.Count;
         }
     }
 }

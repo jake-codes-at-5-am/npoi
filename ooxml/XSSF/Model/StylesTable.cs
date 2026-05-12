@@ -117,6 +117,12 @@ namespace NPOI.XSSF.Model
         {
             XmlDocument xmldoc = ConvertStreamToXml(part.GetInputStream());
             ReadFrom(xmldoc);
+
+            // Release decompressed ZIP entry data after parsing
+            if (part is ZipPackagePart zipPart)
+            {
+                zipPart.ReleaseZipEntryData();
+            }
         }
 
         [Obsolete("deprecated in POI 3.14, scheduled for removal in POI 3.16")]

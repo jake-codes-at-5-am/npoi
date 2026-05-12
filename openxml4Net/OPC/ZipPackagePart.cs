@@ -1,9 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
-using System.IO;
+﻿using ICSharpCode.SharpZipLib.Zip;
 using NPOI.OpenXml4Net.OPC.Internal.Marshallers;
-using ICSharpCode.SharpZipLib.Zip;
+using NPOI.OpenXml4Net.Util;
+using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
 
 namespace NPOI.OpenXml4Net.OPC
 {
@@ -120,6 +121,21 @@ public class ZipPackagePart : PackagePart {
     public override void Flush()
     {
         throw new InvalidOperationException("Method not implemented !");
+    }
+
+    /// <summary>
+    /// Releases the decompressed ZIP entry data backing this part.
+    /// Call after the part's content has been fully parsed into an object model.
+    /// This frees the in-memory byte[] held by ZipInputStreamZipEntrySource.FakeZipEntry.
+    /// After calling this, GetInputStream() will return an empty stream.
+    /// Only safe for parts that regenerate their content during save via Commit().
+    /// </summary>
+    public void ReleaseZipEntryData()
+    {
+        if (_container is ZipPackage zipPkg && zipPkg.ZipArchive is ZipInputStreamZipEntrySource source)
+        {
+            source.ReleaseEntryData(zipEntry);
+        }
     }
 }
 }

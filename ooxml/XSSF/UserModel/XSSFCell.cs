@@ -68,17 +68,6 @@ namespace NPOI.XSSF.UserModel
         private int _cellNum;
 
         /**
-         * Table of strings shared across this workbook.
-         * If two cells contain the same string, then the cell value is the same index into SharedStringsTable
-         */
-        private SharedStringsTable _sharedStringSource;
-
-        /**
-         * Table of cell styles shared across all cells in a workbook.
-         */
-        private StylesTable _stylesSource;
-
-        /**
          * Construct a XSSFCell.
          *
          * @param row the parent row.
@@ -90,7 +79,7 @@ namespace NPOI.XSSF.UserModel
             _row = row;
             if (cell.r != null)
             {
-                _cellNum = new CellReference(cell.r).Col;
+                _cellNum = ParseColumnIndex(cell.r);
             }
             else
             {
@@ -100,8 +89,6 @@ namespace NPOI.XSSF.UserModel
                     _cellNum = (row as XSSFRow).GetCell(prevNum - 1, MissingCellPolicy.RETURN_NULL_AND_BLANK).ColumnIndex + 1;
                 }
             }
-            _sharedStringSource = ((XSSFWorkbook)row.Sheet.Workbook).GetSharedStringSource();
-            _stylesSource = ((XSSFWorkbook)row.Sheet.Workbook).GetStylesSource();
         }
 
         /// <summary>
@@ -210,7 +197,7 @@ namespace NPOI.XSSF.UserModel
          */
         protected SharedStringsTable GetSharedStringSource()
         {
-            return _sharedStringSource;
+            return ((XSSFWorkbook)_row.Sheet.Workbook).GetSharedStringSource();
         }
 
         /**
@@ -218,7 +205,7 @@ namespace NPOI.XSSF.UserModel
          */
         protected StylesTable GetStylesSource()
         {
-            return _stylesSource;
+            return ((XSSFWorkbook)_row.Sheet.Workbook).GetStylesSource();
         }
 
         /**
@@ -428,7 +415,7 @@ namespace NPOI.XSSF.UserModel
                             if (_cell.IsSetV())
                             {
                                 int idx = Int32.Parse(_cell.v);
-                                rt = new XSSFRichTextString(_sharedStringSource.GetEntryAt(idx));
+                                rt = new XSSFRichTextString(GetSharedStringSource().GetEntryAt(idx));
                             }
                             else
                             {
@@ -443,9 +430,38 @@ namespace NPOI.XSSF.UserModel
                     default:
                         throw TypeMismatch(CellType.String, cellType, false);
                 }
-                rt.SetStylesTableReference(_stylesSource);
+                rt.SetStylesTableReference(GetStylesSource());
                 return rt;
             }
+        }
+
+        /// <summary>
+        /// Parses the column index directly from a cell reference string (e.g. "A1" → 0, "AA5" → 26)
+        /// without allocating a CellReference object.
+        /// </summary>
+        private static int ParseColumnIndex(string cellRef)
+        {
+            int col = 0;
+            int i = 0;
+            while (i < cellRef.Length)
+            {
+                char c = cellRef[i];
+                if (c >= 'A' && c <= 'Z')
+                {
+                    col = col * 26 + (c - 'A' + 1);
+                    i++;
+                }
+                else if (c >= 'a' && c <= 'z')
+                {
+                    col = col * 26 + (c - 'a' + 1);
+                    i++;
+                }
+                else
+                {
+                    break; // hit digit, we're done with column letters
+                }
+            }
+            return col - 1; // 0-based
         }
 
         private static void CheckFormulaCachedValueType(CellType expectedTypeCode, CellType cachedValueType)
@@ -506,9 +522,11 @@ namespace NPOI.XSSF.UserModel
                     {
                         _cell.t = ST_CellType.s;
                         XSSFRichTextString rt = (XSSFRichTextString)str;
-                        rt.SetStylesTableReference(_stylesSource);
-                        int sRef = _sharedStringSource.AddEntry(rt.GetCTRst());
-                        _cell.v=sRef.ToString();
+                        var styles = GetStylesSource();
+                        var sst = GetSharedStringSource();
+                        rt.SetStylesTableReference(styles);
+                        int sRef = sst.AddEntry(rt.GetCTRst());
+                        _cell.v = sRef.ToString();
                     }
                     break;
             }
@@ -732,26 +750,26 @@ namespace NPOI.XSSF.UserModel
         {
             get
             {
-                XSSFCellStyle style = null;
-                if ((null != _stylesSource) && (_stylesSource.NumCellStyles > 0))
-                {
-                    long idx = _cell.IsSetS() ? _cell.s : 0;
-                    style = _stylesSource.GetStyleAt((int)idx);
-                }
-                return style;
+                var styles = GetStylesSource();
+                if (styles == null || styles.NumCellStyles == 0)
+                    return null;
+                long idx = _cell.IsSetS() ? _cell.s : 0;
+                return styles.GetStyleAt((int)idx);
             }
-            set 
+            set
             {
                 if (value == null)
                 {
-                    if (_cell.IsSetS()) _cell.unsetS();
+                    if (_cell.IsSetS())
+                        _cell.unsetS();
                 }
                 else
                 {
                     XSSFCellStyle xStyle = (XSSFCellStyle)value;
-                    xStyle.VerifyBelongsToStylesSource(_stylesSource);
+                    var styles = GetStylesSource();
+                    xStyle.VerifyBelongsToStylesSource(styles);
 
-                    long idx = _stylesSource.PutStyle(xStyle);
+                    long idx = styles.PutStyle(xStyle);
                     _cell.s = (uint)idx;
                 }
             }
@@ -1047,11 +1065,13 @@ namespace NPOI.XSSF.UserModel
                     {
                         String str = ConvertCellValueToString();
                         XSSFRichTextString rt = new XSSFRichTextString(str);
-                        rt.SetStylesTableReference(_stylesSource);
-                        int sRef = _sharedStringSource.AddEntry(rt.GetCTRst());
-                        _cell.v= sRef.ToString();
+                        var styles = GetStylesSource();
+                        var sst = GetSharedStringSource();
+                        rt.SetStylesTableReference(styles);
+                        int sRef = sst.AddEntry(rt.GetCTRst());
+                        _cell.v = sRef.ToString();
                     }
-                    _cell.t= (ST_CellType.s);
+                    _cell.t = (ST_CellType.s);
                     break;
                 case CellType.Formula:
                     if (!_cell.IsSetF())
@@ -1267,7 +1287,7 @@ namespace NPOI.XSSF.UserModel
                     return TRUE_AS_STRING.Equals(_cell.v);
                 case CellType.String:
                     int sstIndex = Int32.Parse(_cell.v);
-                    XSSFRichTextString rt = new XSSFRichTextString(_sharedStringSource.GetEntryAt(sstIndex));
+                    XSSFRichTextString rt = new XSSFRichTextString(GetSharedStringSource().GetEntryAt(sstIndex));
                     String text = rt.String;
                     return Boolean.Parse(text);
                 case CellType.Numeric:
@@ -1292,7 +1312,7 @@ namespace NPOI.XSSF.UserModel
                     return TRUE_AS_STRING.Equals(_cell.v) ? "TRUE" : "FALSE";
                 case CellType.String:
                     int sstIndex = Int32.Parse(_cell.v);
-                    XSSFRichTextString rt = new XSSFRichTextString(_sharedStringSource.GetEntryAt(sstIndex));
+                    XSSFRichTextString rt = new XSSFRichTextString(GetSharedStringSource().GetEntryAt(sstIndex));
                     return rt.String;
                 case CellType.Numeric:
                 case CellType.Error:

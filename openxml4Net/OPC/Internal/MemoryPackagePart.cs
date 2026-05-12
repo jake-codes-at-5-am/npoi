@@ -58,12 +58,20 @@ namespace NPOI.OpenXml4Net.OPC.Internal
         protected override Stream GetInputStreamImpl()
         {
             // If this part has been created from scratch and/or the data buffer is
-            // not
-            // initialize, so we do it now.
+            // not initialized, return an empty stream.
             if (data == null)
             {
-                return new MemoryStream();
+                return new MemoryStream(Array.Empty<byte>(), writable: false);
             }
+
+            // Try to return a non-writable view of the data without copying.
+            // This avoids duplicating potentially large buffers in memory.
+            if (data.TryGetBuffer(out System.ArraySegment<byte> segment))
+            {
+                return new MemoryStream(segment.Array, segment.Offset, segment.Count, writable: false);
+            }
+
+            // Fallback: copy the data (original behavior)
             MemoryStream newMs = new MemoryStream((int)data.Length);
             data.Position = 0;
             StreamHelper.CopyStream(data, newMs);

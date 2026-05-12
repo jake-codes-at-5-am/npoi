@@ -27,23 +27,28 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
 
         private uint sField;
 
-        private bool customFormatField;
+        // Memory optimization: pack 7 boolean fields into a single byte using flags.
+        // Each individual bool field consumes 1 byte + alignment padding = 4 bytes
+        // in practice on 64-bit. 7 bools = 28 bytes. A single flags byte = 1 byte.
+        // Savings: ~24 bytes per row × 10K rows = ~240KB.
+        [Flags]
+        private enum RowFlags : byte
+        {
+            None = 0,
+            CustomFormat = 1,
+            Hidden = 2,
+            CustomHeight = 4,
+            Collapsed = 8,
+            ThickTop = 16,
+            ThickBot = 32,
+            Ph = 64
+        }
+        private RowFlags _flags;
 
-        private double htField=-1;
-
-        private bool hiddenField;
-
-        private bool customHeightField;
+        private double htField = -1;
 
         private byte outlineLevelField;
 
-        private bool collapsedField;
-
-        private bool thickTopField;
-
-        private bool thickBotField;
-
-        private bool phField;
         private double dyDescentField; //x14ac:dyDescent
 
         private int lastCellField = -1;
@@ -58,7 +63,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
             ctObj.s = XmlHelper.ReadUInt(node.Attributes["s"]);
             ctObj.customFormat = XmlHelper.ReadBool(node.Attributes["customFormat"]);
             ctObj.dyDescentField = XmlHelper.ReadDouble(node.Attributes["x14ac:dyDescent"]);
-            if (node.Attributes["ht"]!=null)
+            if (node.Attributes["ht"] != null)
                 ctObj.ht = XmlHelper.ReadDouble(node.Attributes["ht"]);
             ctObj.hidden = XmlHelper.ReadBool(node.Attributes["hidden"]);
             ctObj.outlineLevel = XmlHelper.ReadByte(node.Attributes["outlineLevel"]);
@@ -67,7 +72,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
             ctObj.thickTop = XmlHelper.ReadBool(node.Attributes["thickTop"]);
             ctObj.thickBot = XmlHelper.ReadBool(node.Attributes["thickBot"]);
             ctObj.ph = XmlHelper.ReadBool(node.Attributes["ph"]);
-            ctObj.c = new List<CT_Cell>();
+            ctObj.c = new List<CT_Cell>(node.ChildNodes.Count);
             foreach (XmlNode childNode in node.ChildNodes)
             {
                 if (childNode.LocalName == "extLst")
@@ -107,15 +112,15 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
             XmlHelper.WriteAttribute(sw, "r", this.r);
             XmlHelper.WriteAttribute(sw, "spans", this.spans);
             XmlHelper.WriteAttribute(sw, "s", this.s);
-            XmlHelper.WriteAttribute(sw, "customFormat", this.customFormat,false);
-            if (this.ht>=0)
+            XmlHelper.WriteAttribute(sw, "customFormat", this.customFormat, false);
+            if (this.ht >= 0)
                 XmlHelper.WriteAttribute(sw, "ht", this.ht);
-            XmlHelper.WriteAttribute(sw, "hidden", this.hidden,false);
-            XmlHelper.WriteAttribute(sw, "customHeight", this.customHeight,false);
+            XmlHelper.WriteAttribute(sw, "hidden", this.hidden, false);
+            XmlHelper.WriteAttribute(sw, "customHeight", this.customHeight, false);
             XmlHelper.WriteAttribute(sw, "outlineLevel", this.outlineLevel);
             XmlHelper.WriteAttribute(sw, "collapsed", this.collapsed, false);
-            XmlHelper.WriteAttribute(sw, "thickTop", this.thickTop,false);
-            XmlHelper.WriteAttribute(sw, "thickBot", this.thickBot,false);
+            XmlHelper.WriteAttribute(sw, "thickTop", this.thickTop, false);
+            XmlHelper.WriteAttribute(sw, "thickBot", this.thickBot, false);
             XmlHelper.WriteAttribute(sw, "ph", this.ph, false);
             XmlHelper.WriteAttribute(sw, "x14ac:dyDescent", this.dyDescentField, false);
             sw.Write(">");
@@ -140,26 +145,21 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
             rField = row.rField;
             spansField = row.spansField;
             sField = row.sField;
-            customFormatField = row.customFormatField;
+            _flags = row._flags;
             htField = row.htField;
-            hiddenField = row.hiddenField;
-            customHeightField = row.customHeightField;
             outlineLevelField = row.outlineLevelField;
-            collapsedField = row.collapsedField;
-            thickTopField = row.thickTopField;
-            thickBotField = row.thickBotField;
-            phField = row.phField;
         }
         public CT_Cell AddNewC()
         {
-            if (null == cField) { cField = new List<CT_Cell>(); }
+            if (null == cField)
+            { cField = new List<CT_Cell>(); }
             CT_Cell cell = new CT_Cell();
             this.cField.Add(cell);
             return cell;
         }
         public void UnsetCollapsed()
         {
-            this.collapsedField = false;
+            _flags &= ~RowFlags.Collapsed;
         }
         public void UnsetS()
         {
@@ -167,19 +167,19 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         }
         public void UnsetCustomFormat()
         {
-            this.customFormatField = false;
+            _flags &= ~RowFlags.CustomFormat;
         }
         public bool IsSetHidden()
         {
-            return this.hiddenField != false;
+            return (_flags & RowFlags.Hidden) != 0;
         }
         public bool IsSetCollapsed()
         {
-            return this.collapsedField != false;
+            return (_flags & RowFlags.Collapsed) != 0;
         }
         public bool IsSetHt()
         {
-            return this.htField >=0;
+            return this.htField >= 0;
         }
         public void UnsetHt()
         {
@@ -187,11 +187,11 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         }
         public bool IsSetCustomHeight()
         {
-            return this.customHeightField != false;
+            return (_flags & RowFlags.CustomHeight) != 0;
         }
         public void UnsetCustomHeight()
         {
-            this.customHeightField = false;
+            _flags &= ~RowFlags.CustomHeight;
         }
         public bool IsSetS()
         {
@@ -199,7 +199,7 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         }
         public void UnsetHidden()
         {
-            this.hiddenField = false;
+            _flags &= ~RowFlags.Hidden;
         }
 
         public int SizeOfCArray()
@@ -285,11 +285,14 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return this.customFormatField;
+                return (_flags & RowFlags.CustomFormat) != 0;
             }
             set
             {
-                this.customFormatField = value;
+                if (value)
+                    _flags |= RowFlags.CustomFormat;
+                else
+                    _flags &= ~RowFlags.CustomFormat;
             }
         }
         [XmlAttribute]
@@ -312,11 +315,14 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return this.hiddenField;
+                return (_flags & RowFlags.Hidden) != 0;
             }
             set
             {
-                this.hiddenField = value;
+                if (value)
+                    _flags |= RowFlags.Hidden;
+                else
+                    _flags &= ~RowFlags.Hidden;
             }
         }
 
@@ -326,11 +332,14 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return this.customHeightField;
+                return (_flags & RowFlags.CustomHeight) != 0;
             }
             set
             {
-                this.customHeightField = value;
+                if (value)
+                    _flags |= RowFlags.CustomHeight;
+                else
+                    _flags &= ~RowFlags.CustomHeight;
             }
         }
 
@@ -354,11 +363,14 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return this.collapsedField;
+                return (_flags & RowFlags.Collapsed) != 0;
             }
             set
             {
-                this.collapsedField = value;
+                if (value)
+                    _flags |= RowFlags.Collapsed;
+                else
+                    _flags &= ~RowFlags.Collapsed;
             }
         }
 
@@ -368,11 +380,14 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return this.thickTopField;
+                return (_flags & RowFlags.ThickTop) != 0;
             }
             set
             {
-                this.thickTopField = value;
+                if (value)
+                    _flags |= RowFlags.ThickTop;
+                else
+                    _flags &= ~RowFlags.ThickTop;
             }
         }
 
@@ -382,11 +397,14 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return this.thickBotField;
+                return (_flags & RowFlags.ThickBot) != 0;
             }
             set
             {
-                this.thickBotField = value;
+                if (value)
+                    _flags |= RowFlags.ThickBot;
+                else
+                    _flags &= ~RowFlags.ThickBot;
             }
         }
 
@@ -396,11 +414,14 @@ namespace NPOI.OpenXmlFormats.Spreadsheet
         {
             get
             {
-                return this.phField;
+                return (_flags & RowFlags.Ph) != 0;
             }
             set
             {
-                this.phField = value;
+                if (value)
+                    _flags |= RowFlags.Ph;
+                else
+                    _flags &= ~RowFlags.Ph;
             }
         }
 

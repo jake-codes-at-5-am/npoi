@@ -35,6 +35,8 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml;
+using CT_Drawing = NPOI.OpenXmlFormats.Spreadsheet.CT_Drawing;
+using CT_LegacyDrawing = NPOI.OpenXmlFormats.Spreadsheet.CT_LegacyDrawing;
 using CT_Shape = NPOI.OpenXmlFormats.Vml.CT_Shape;
 using ST_EditAs = NPOI.OpenXmlFormats.Dml.Spreadsheet.ST_EditAs;
 
@@ -1248,14 +1250,40 @@ namespace NPOI.XSSF.UserModel
             {
                 throw new POIXMLException(e);
             }
+
+            // Release the decompressed ZIP entry data for this sheet.
+            // The data has been fully parsed into the CT_Worksheet object model
+            // and is no longer needed. This sheet's Commit() method will regenerate
+            // the XML from the object model during save.
+            // For a 10K-row sheet, this frees ~3.5MB of decompressed XML data.
+            if (GetPackagePart() is ZipPackagePart zipPart)
+            {
+                zipPart.ReleaseZipEntryData();
+            }
         }
+
+        /// <summary>
+        /// Threshold in bytes above which streaming XML parse is used for sheet data.
+        /// This avoids loading the full sheet XML into an XmlDocument DOM tree, which
+        /// can use 3-10x the raw XML size in memory for large sheets.
+        /// </summary>
+        private const long StreamingParseThreshold = 1 * 1024 * 1024; // 1MB
 
         internal virtual void Read(Stream is1)
         {
             try
             {
-                XmlDocument doc = ConvertStreamToXml(is1);
-                worksheet = WorksheetDocument.Parse(doc, NamespaceManager).GetWorksheet();
+                long streamLength = is1.CanSeek ? is1.Length : -1;
+
+                if (streamLength > StreamingParseThreshold)
+                {
+                    ReadStreaming(is1);
+                }
+                else
+                {
+                    XmlDocument doc = ConvertStreamToXml(is1);
+                    worksheet = WorksheetDocument.Parse(doc, NamespaceManager).GetWorksheet();
+                }
             }
             catch (XmlException e)
             {
@@ -1288,6 +1316,277 @@ namespace NPOI.XSSF.UserModel
 
             // Process external hyperlinks for the sheet, if there are any
             InitHyperlinks();
+        }
+
+        /// <summary>
+        /// Streaming parse for large sheets. Parses the sheetData section (rows and cells)
+        /// using XmlReader to avoid loading the full DOM tree into memory. Metadata sections
+        /// (sheetPr, dimension, sheetViews, etc.) are parsed as small DOM subtrees since they
+        /// are typically small.
+        /// </summary>
+        private void ReadStreaming(Stream is1)
+        {
+            worksheet = new CT_Worksheet();
+            worksheet.sheetData = new CT_SheetData();
+            worksheet.sheetData.row = new List<CT_Row>();
+            worksheet.cols = new List<CT_Cols>();
+            worksheet.conditionalFormatting = new List<CT_ConditionalFormatting>();
+
+            var readerSettings = new XmlReaderSettings
+            {
+                XmlResolver = null,
+#pragma warning disable CS0618
+                ProhibitDtd = true,
+#pragma warning restore CS0618
+                CloseInput = false
+            };
+
+            // Collect cols node XML to parse after sheetData (needs lastColumn info)
+            string colsOuterXml = null;
+
+            using (XmlReader reader = XmlReader.Create(is1, readerSettings))
+            {
+                // Use an explicit advance flag to avoid double-advancing after ReadOuterXml.
+                // ReadOuterXml() positions the reader on the next node, so calling Read()
+                // again would skip that node entirely.
+                bool needsRead = true;
+                while (needsRead ? reader.Read() : !reader.EOF)
+                {
+                    needsRead = true; // default: advance on next iteration
+
+                    if (reader.NodeType != XmlNodeType.Element)
+                        continue;
+
+                    switch (reader.LocalName)
+                    {
+                        case "sheetData":
+                            ParseSheetDataStreaming(reader);
+                            needsRead = false; // ParseSheetDataStreaming leaves reader on next node
+                            break;
+                        case "cols":
+                            colsOuterXml = reader.ReadOuterXml();
+                            needsRead = false; // ReadOuterXml already advanced
+                            break;
+                        case "sheetPr":
+                            worksheet.sheetPr = ParseSubtreeElement<CT_SheetPr>(reader, CT_SheetPr.Parse);
+                            needsRead = false;
+                            break;
+                        case "dimension":
+                            worksheet.dimension = ParseSubtreeElement<CT_SheetDimension>(reader, CT_SheetDimension.Parse);
+                            needsRead = false;
+                            break;
+                        case "sheetViews":
+                            worksheet.sheetViews = ParseSubtreeElement<CT_SheetViews>(reader, CT_SheetViews.Parse);
+                            needsRead = false;
+                            break;
+                        case "sheetFormatPr":
+                            worksheet.sheetFormatPr = ParseSubtreeElement<CT_SheetFormatPr>(reader, CT_SheetFormatPr.Parse);
+                            needsRead = false;
+                            break;
+                        case "mergeCells":
+                            worksheet.mergeCells = ParseSubtreeElement<CT_MergeCells>(reader, CT_MergeCells.Parse);
+                            needsRead = false;
+                            break;
+                        case "hyperlinks":
+                            worksheet.hyperlinks = ParseSubtreeElement<CT_Hyperlinks>(reader, CT_Hyperlinks.Parse);
+                            needsRead = false;
+                            break;
+                        case "pageMargins":
+                            worksheet.pageMargins = ParseSubtreeElement<CT_PageMargins>(reader, CT_PageMargins.Parse);
+                            needsRead = false;
+                            break;
+                        case "pageSetup":
+                            worksheet.pageSetup = ParseSubtreeElement<CT_PageSetup>(reader, CT_PageSetup.Parse);
+                            needsRead = false;
+                            break;
+                        case "headerFooter":
+                            worksheet.headerFooter = ParseSubtreeElement<CT_HeaderFooter>(reader, CT_HeaderFooter.Parse);
+                            needsRead = false;
+                            break;
+                        case "printOptions":
+                            worksheet.printOptions = ParseSubtreeElement<CT_PrintOptions>(reader, CT_PrintOptions.Parse);
+                            needsRead = false;
+                            break;
+                        case "sheetProtection":
+                            worksheet.sheetProtection = ParseSubtreeElement<CT_SheetProtection>(reader, CT_SheetProtection.Parse);
+                            needsRead = false;
+                            break;
+                        case "autoFilter":
+                            worksheet.autoFilter = ParseSubtreeElement<CT_AutoFilter>(reader, CT_AutoFilter.Parse);
+                            needsRead = false;
+                            break;
+                        case "dataValidations":
+                            worksheet.dataValidations = ParseSubtreeElement<CT_DataValidations>(reader, CT_DataValidations.Parse);
+                            needsRead = false;
+                            break;
+                        case "drawing":
+                            worksheet.drawing = ParseSubtreeElement<CT_Drawing>(reader, CT_Drawing.Parse);
+                            needsRead = false;
+                            break;
+                        case "legacyDrawing":
+                            worksheet.legacyDrawing = ParseSubtreeElement<CT_LegacyDrawing>(reader, CT_LegacyDrawing.Parse);
+                            needsRead = false;
+                            break;
+                        case "tableParts":
+                            worksheet.tableParts = ParseSubtreeElement<CT_TableParts>(reader, CT_TableParts.Parse);
+                            needsRead = false;
+                            break;
+                        case "conditionalFormatting":
+                            var cf = ParseSubtreeElement<CT_ConditionalFormatting>(reader, CT_ConditionalFormatting.Parse);
+                            if (cf != null)
+                                worksheet.conditionalFormatting.Add(cf);
+                            needsRead = false;
+                            break;
+                        case "rowBreaks":
+                            worksheet.rowBreaks = ParseSubtreeElement<CT_PageBreak>(reader, CT_PageBreak.Parse);
+                            needsRead = false;
+                            break;
+                        case "colBreaks":
+                            worksheet.colBreaks = ParseSubtreeElement<CT_PageBreak>(reader, CT_PageBreak.Parse);
+                            needsRead = false;
+                            break;
+                        case "extLst":
+                            worksheet.extLst = ParseSubtreeElement<CT_ExtensionList>(reader, CT_ExtensionList.Parse);
+                            needsRead = false;
+                            break;
+                        case "sortState":
+                            worksheet.sortState = ParseSubtreeElement<CT_SortState>(reader, CT_SortState.Parse);
+                            needsRead = false;
+                            break;
+                        case "phoneticPr":
+                            worksheet.phoneticPr = ParseSubtreeElement<CT_PhoneticPr>(reader, CT_PhoneticPr.Parse);
+                            needsRead = false;
+                            break;
+                        case "worksheet":
+                            // Root element - just let the loop advance into its children
+                            break;
+                        case "sheetCalcPr":
+                            worksheet.sheetCalcPr = ParseSubtreeElement<CT_SheetCalcPr>(reader, CT_SheetCalcPr.Parse);
+                            needsRead = false;
+                            break;
+                        case "protectedRanges":
+                            worksheet.protectedRanges = ParseSubtreeElement<CT_ProtectedRanges>(reader, CT_ProtectedRanges.Parse);
+                            needsRead = false;
+                            break;
+                        case "scenarios":
+                            worksheet.scenarios = ParseSubtreeElement<CT_Scenarios>(reader, CT_Scenarios.Parse);
+                            needsRead = false;
+                            break;
+                        case "customSheetViews":
+                            worksheet.customSheetViews = ParseSubtreeElement<CT_CustomSheetViews>(reader, CT_CustomSheetViews.Parse);
+                            needsRead = false;
+                            break;
+                        case "customProperties":
+                            worksheet.customProperties = ParseSubtreeElement<CT_CustomProperties>(reader, CT_CustomProperties.Parse);
+                            needsRead = false;
+                            break;
+                        case "cellWatches":
+                            worksheet.cellWatches = ParseSubtreeElement<CT_CellWatches>(reader, CT_CellWatches.Parse);
+                            needsRead = false;
+                            break;
+                        case "ignoredErrors":
+                            worksheet.ignoredErrors = ParseSubtreeElement<CT_IgnoredErrors>(reader, CT_IgnoredErrors.Parse);
+                            needsRead = false;
+                            break;
+                        case "smartTags":
+                            worksheet.smartTags = ParseSubtreeElement<CT_CellSmartTags>(reader, CT_CellSmartTags.Parse);
+                            needsRead = false;
+                            break;
+                        case "legacyDrawingHF":
+                            worksheet.legacyDrawingHF = ParseSubtreeElement<CT_LegacyDrawing>(reader, CT_LegacyDrawing.Parse);
+                            needsRead = false;
+                            break;
+                        case "picture":
+                            worksheet.picture = ParseSubtreeElement<CT_SheetBackgroundPicture>(reader, CT_SheetBackgroundPicture.Parse);
+                            needsRead = false;
+                            break;
+                        case "oleObjects":
+                            worksheet.oleObjects = ParseSubtreeElement<CT_OleObjects>(reader, CT_OleObjects.Parse);
+                            needsRead = false;
+                            break;
+                        case "controls":
+                            worksheet.controls = ParseSubtreeElement<CT_Controls>(reader, CT_Controls.Parse);
+                            needsRead = false;
+                            break;
+                        case "webPublishItems":
+                            worksheet.webPublishItems = ParseSubtreeElement<CT_WebPublishItems>(reader, CT_WebPublishItems.Parse);
+                            needsRead = false;
+                            break;
+                        case "dataConsolidate":
+                            worksheet.dataConsolidate = ParseSubtreeElement<CT_DataConsolidate>(reader, CT_DataConsolidate.Parse);
+                            needsRead = false;
+                            break;
+                        default:
+                            // Unknown element. Log at debug for diagnostics and skip over the
+                            // subtree so the reader is not left mid-parse. This matches the
+                            // forward-compat behaviour of the DOM path which also drops nodes
+                            // without matching CT_ properties.
+                            logger.Log(POILogger.DEBUG, "ReadStreaming: unhandled sheet element <" + reader.LocalName + "> skipped");
+                            reader.Skip();
+                            needsRead = false;
+                            break;
+                    }
+                }
+            }
+
+            // Parse cols after sheetData so we have lastColumn information
+            if (colsOuterXml != null)
+            {
+                XmlDocument colsDoc = new XmlDocument();
+                colsDoc.LoadXml(colsOuterXml);
+                worksheet.cols.Add(CT_Cols.Parse(colsDoc.DocumentElement, NamespaceManager, worksheet.sheetData.lastColumn));
+            }
+        }
+
+        /// <summary>
+        /// Helper to parse a small XML element subtree from an XmlReader into a typed object.
+        /// The element is read as outer XML, loaded into a small XmlDocument, then parsed
+        /// using the provided parse function.
+        /// </summary>
+        private T ParseSubtreeElement<T>(XmlReader reader, Func<XmlNode, XmlNamespaceManager, T> parseFunc)
+        {
+            string outerXml = reader.ReadOuterXml();
+            if (string.IsNullOrEmpty(outerXml)) return default(T);
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(outerXml);
+            return parseFunc(doc.DocumentElement, NamespaceManager);
+        }
+
+        /// <summary>
+        /// Parses the &lt;sheetData&gt; section using streaming XmlReader.
+        /// Each &lt;row&gt; element is read as a small DOM subtree and parsed into a CT_Row
+        /// using the existing CT_Row.Parse method, avoiding the need to hold the full
+        /// sheet XML DOM in memory.
+        /// </summary>
+        private void ParseSheetDataStreaming(XmlReader reader)
+        {
+            // reader is positioned on <sheetData>
+            if (reader.IsEmptyElement) return;
+
+            int sheetDataDepth = reader.Depth;
+
+            // Reuse one XmlDocument across all rows to reduce GC pressure
+            XmlDocument rowDoc = new XmlDocument();
+
+            bool needsRead = true;
+            while (needsRead ? reader.Read() : !reader.EOF)
+            {
+                needsRead = true;
+
+                if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == sheetDataDepth)
+                    break; // End of </sheetData>
+
+                if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "row")
+                {
+                    // Read the <row> subtree as a small DOM for CT_Row.Parse
+                    rowDoc.RemoveAll();
+                    rowDoc.LoadXml(reader.ReadOuterXml());
+                    CT_Row row = CT_Row.Parse(rowDoc.DocumentElement, NamespaceManager);
+                    worksheet.sheetData.row.Add(row);
+                    worksheet.sheetData.UpdateLastColumn(row.lastCell);
+                    needsRead = false; // ReadOuterXml already advanced
+                }
+            }
         }
 
         /// <summary>
@@ -1501,11 +1800,6 @@ namespace NPOI.XSSF.UserModel
                 }
 
                 worksheet.hyperlinks.SetHyperlinkArray(ctHls);
-            }
-
-            foreach (XSSFRow row in _rows.Values)
-            {
-                row.OnDocumentWrite();
             }
 
             int minCell = int.MaxValue, maxCell = int.MinValue;
@@ -3551,7 +3845,7 @@ namespace NPOI.XSSF.UserModel
                 }
             }
 
-            string ref1 = ((XSSFCell)cell).GetCTCell().r;
+            string ref1 = ((XSSFCell)cell).GetReference();
             throw new ArgumentException(
                 "Cell " + ref1 + " is not part of an array formula.");
         }
