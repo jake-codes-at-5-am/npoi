@@ -160,8 +160,59 @@ namespace TestCases.SS.Formula.Functions
             // odd number of TRUEs -> TRUE
             Assert.AreEqual(BoolEval.TRUE, RunFree(Xor.instance, BoolEval.TRUE, BoolEval.FALSE));
             Assert.AreEqual(BoolEval.FALSE, RunFree(Xor.instance, BoolEval.TRUE, BoolEval.TRUE));
-            Assert.AreEqual(BoolEval.TRUE, RunFree(Xor.instance, new NumberEval(1), new NumberEval(0), new NumberEval(1), new NumberEval(1)));
-            Assert.AreEqual(BoolEval.FALSE, RunFree(Xor.instance, new NumberEval(0), new NumberEval(0)));
+            Assert.AreEqual(BoolEval.TRUE, RunFree(Xor.instance,
+                new NumberEval(1), new NumberEval(0), new NumberEval(1), new NumberEval(1)));
+            Assert.AreEqual(BoolEval.FALSE, RunFree(Xor.instance,
+                new NumberEval(0), new NumberEval(0)));
+        }
+
+        [Test]
+        public void TestXorNoArgsIsValueInvalid()
+        {
+            // Excel's parser rejects =XOR() outright; if we ever do get an empty
+            // arg list at evaluation time, return #VALUE! rather than crash or FALSE.
+            Assert.AreEqual(ErrorEval.VALUE_INVALID, RunFree(Xor.instance));
+        }
+
+        [Test]
+        public void TestXorAllBlankArgsReturnsFalse()
+        {
+            // Excel rule: blanks/missing values are coerced to FALSE in XOR — they
+            // simply don't contribute to the TRUE count. Previously this returned
+            // #VALUE! because we tracked a "saw at least one usable value" flag;
+            // now blanks fall through and the parity check yields FALSE.
+            Assert.AreEqual(BoolEval.FALSE, RunFree(Xor.instance, BlankEval.instance));
+            Assert.AreEqual(BoolEval.FALSE,
+                RunFree(Xor.instance, BlankEval.instance, BlankEval.instance));
+            Assert.AreEqual(BoolEval.FALSE,
+                RunFree(Xor.instance, MissingArgEval.instance, MissingArgEval.instance));
+        }
+
+        [Test]
+        public void TestXorMixedBlankAndTrueArgs()
+        {
+            // One TRUE plus blanks => one TRUE => odd => TRUE
+            Assert.AreEqual(BoolEval.TRUE,
+                RunFree(Xor.instance, BlankEval.instance, BoolEval.TRUE, BlankEval.instance));
+            // Two TRUEs plus blanks => even => FALSE
+            Assert.AreEqual(BoolEval.FALSE,
+                RunFree(Xor.instance, BoolEval.TRUE, BlankEval.instance, BoolEval.TRUE));
+        }
+
+        [Test]
+        public void TestXorNonCoercibleStringReturnsValueInvalid()
+        {
+            // Non-bool/non-numeric strings are not coerceable -> #VALUE! (matches Excel).
+            Assert.AreEqual(ErrorEval.VALUE_INVALID,
+                RunFree(Xor.instance, new StringEval("hello")));
+        }
+
+        [Test]
+        public void TestXorPropagatesErrorArg()
+        {
+            // Error in any arg propagates (matches Excel).
+            Assert.AreEqual(ErrorEval.NA,
+                RunFree(Xor.instance, BoolEval.TRUE, ErrorEval.NA));
         }
 
         // ---------------- UNICODE / UNICHAR ----------------

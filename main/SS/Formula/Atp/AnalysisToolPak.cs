@@ -68,6 +68,11 @@ namespace NPOI.SS.Formula.Atp
             return null;
         }
 
+        // Note on _xlfn.-prefixed names: FindFunction strips the "_xlfn." prefix
+        // before this dictionary is consulted, so every function — whether or not
+        // it has a bare-name Excel surface — must be registered under its bare
+        // name only. The most surprising example is SINGLE (the implicit-
+        // intersection "@" operator), which has no user-facing bare-name form.
         private static Dictionary<String, FreeRefFunction> CreateFunctionsMap()
         {
             Dictionary<String, FreeRefFunction> m = new Dictionary<String, FreeRefFunction>(120);

@@ -35,11 +35,11 @@ namespace NPOI.SS.Formula.Functions
         {
             if (args == null || args.Length == 0)
             {
+                // No arguments supplied at all — Excel rejects this with #VALUE!.
                 return ErrorEval.VALUE_INVALID;
             }
 
             int trueCount = 0;
-            bool hasAtLeastOne = false;
             foreach (ValueEval arg in args)
             {
                 if (arg is AreaEval area)
@@ -48,7 +48,7 @@ namespace NPOI.SS.Formula.Functions
                     {
                         for (int c = 0; c < area.Width; c++)
                         {
-                            if (TryAddTruthValue(area.GetRelativeValue(r, c), ref trueCount, ref hasAtLeastOne, out var error))
+                            if (TryAddTruthValue(area.GetRelativeValue(r, c), ref trueCount, out var error))
                             {
                                 continue;
                             }
@@ -58,43 +58,43 @@ namespace NPOI.SS.Formula.Functions
                 }
                 else if (arg is RefEval refEval)
                 {
-                    if (!TryAddTruthValue(refEval.GetInnerValueEval(refEval.FirstSheetIndex), ref trueCount, ref hasAtLeastOne, out var error))
+                    if (!TryAddTruthValue(refEval.GetInnerValueEval(refEval.FirstSheetIndex), ref trueCount, out var error))
                     {
                         return error;
                     }
                 }
                 else
                 {
-                    if (!TryAddTruthValue(arg, ref trueCount, ref hasAtLeastOne, out var error))
+                    if (!TryAddTruthValue(arg, ref trueCount, out var error))
                     {
                         return error;
                     }
                 }
             }
 
-            if (!hasAtLeastOne)
-            {
-                return ErrorEval.VALUE_INVALID;
-            }
+            // Excel treats blank/missing inputs as FALSE rather than erroring,
+            // so a supplied-but-all-blank arg list naturally falls through here
+            // and yields FALSE (trueCount == 0 → even parity). Only the "no
+            // args at all" case (handled at the top) returns #VALUE!.
             return (trueCount & 1) == 1 ? BoolEval.TRUE : BoolEval.FALSE;
         }
 
-        private static bool TryAddTruthValue(ValueEval cell, ref int trueCount, ref bool hasAtLeastOne, out ValueEval error)
+        private static bool TryAddTruthValue(ValueEval cell, ref int trueCount, out ValueEval error)
         {
             error = null;
             if (cell is BlankEval || cell is MissingArgEval)
             {
-                return true; // ignored, just like in AND/OR
+                // Excel treats blank / missing cells as FALSE in XOR — they don't
+                // contribute to the TRUE count but they also don't cause #VALUE!.
+                return true;
             }
             if (cell is BoolEval be)
             {
-                hasAtLeastOne = true;
                 if (be.BooleanValue) trueCount++;
                 return true;
             }
             if (cell is NumberEval ne)
             {
-                hasAtLeastOne = true;
                 if (ne.NumberValue != 0) trueCount++;
                 return true;
             }
@@ -107,7 +107,6 @@ namespace NPOI.SS.Formula.Functions
             {
                 if (bool.TryParse(se.StringValue, out bool parsed))
                 {
-                    hasAtLeastOne = true;
                     if (parsed) trueCount++;
                     return true;
                 }
