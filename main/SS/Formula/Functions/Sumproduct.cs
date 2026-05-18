@@ -59,6 +59,20 @@ namespace NPOI.SS.Formula.Functions
             {
                 return ErrorEval.VALUE_INVALID;
             }
+
+            // Excel rule: if any argument is itself an error, SUMPRODUCT propagates
+            // the first error rather than crashing. Pre-scan so a #REF!/#N/A/#VALUE!
+            // arriving from another formula's cached result doesn't trigger the
+            // "Invalid arg type" RuntimeException that used to escape past the
+            // formula evaluator.
+            for (int i = 0; i < maxN; i++)
+            {
+                if (args[i] is ErrorEval errArg)
+                {
+                    return errArg;
+                }
+            }
+
             ValueEval firstArg = args[0];
             try
             {
@@ -84,8 +98,11 @@ namespace NPOI.SS.Formula.Functions
             {
                 return e.GetErrorEval();
             }
-            throw new RuntimeException("Invalid arg type for SUMPRODUCT: ("
-                    + firstArg.GetType().Name + ")");
+            // Any other unexpected arg shape (e.g. StringEval, BoolEval at the top
+            // level) is reported as #VALUE! — same behaviour Excel exhibits — rather
+            // than thrown as a runtime exception that aborts the entire workbook
+            // evaluation.
+            return ErrorEval.VALUE_INVALID;
         }
 
         private ValueEval EvaluateSingleProduct(ValueEval[] evalArgs)

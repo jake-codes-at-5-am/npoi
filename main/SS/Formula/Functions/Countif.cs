@@ -550,9 +550,15 @@ namespace NPOI.SS.Formula.Functions
             {
                 return CountUtils.CountMatchingCellsInArea((ThreeDEval)rangeArg, criteriaPredicate);
             }
+            else if (rangeArg is ErrorEval errEval)
+            {
+                // Propagate error through the result (Excel matches the error
+                // value when a referenced cell contains #REF!/#N/A/#VALUE!/...).
+                throw new EvaluationException(errEval);
+            }
             else
             {
-                throw new ArgumentException("Bad range arg type (" + rangeArg.GetType().Name + ")");
+                throw new EvaluationException(ErrorEval.VALUE_INVALID);
             }
         }
 
@@ -688,8 +694,17 @@ namespace NPOI.SS.Formula.Functions
                 // If the criteria arg is a reference to a blank cell, countif always returns zero.
                 return NumberEval.ZERO;
             }
-            double result = CountMatchingCellsInArea(arg0, mp);
-            return new NumberEval(result);
+            try
+            {
+                double result = CountMatchingCellsInArea(arg0, mp);
+                return new NumberEval(result);
+            }
+            catch (EvaluationException e)
+            {
+                // Errors propagating out of the range argument become the result
+                // (matches Excel) instead of crashing the workbook evaluator.
+                return e.GetErrorEval();
+            }
         }
     }
 }
