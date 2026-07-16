@@ -48,11 +48,11 @@ namespace NPOI.SS.Util
         private const double MAXIMUM_ROW_HEIGHT_IN_POINTS = 409.5;
         private const double POINTS_PER_INCH = 72.0;
         private const double HEIGHT_POINT_CORRECTION = 1.33;
-        #if NET6_0_OR_GREATER
+#if NET6_0_OR_GREATER
             private const int SixLaborsFontsMajorVersion = 2; // SixLabors.Fonts 2.x for .NET 6+
-        #else
-            private const int SixLaborsFontsMajorVersion = 1; // SixLabors.Fonts 1.x for older frameworks
-        #endif
+#else
+        private const int SixLaborsFontsMajorVersion = 1; // SixLabors.Fonts 1.x for older frameworks
+#endif
 
         /// <summary>
         /// Helper method to calculate cell padding width based on SixLabors.Fonts version.
@@ -572,7 +572,7 @@ namespace NPOI.SS.Util
                     ? (float)sheet.GetColumnWidth(columnIndex)
                     : pixelWidth;
             }
-            var measureResult = TextMeasurer.MeasureAdvance(stringValue,options);
+            var measureResult = TextMeasurer.MeasureAdvance(stringValue, options);
 
             return Math.Round(measureResult.Height, 0, MidpointRounding.ToEven);
         }
@@ -894,7 +894,15 @@ namespace NPOI.SS.Util
                     // Try to get it formatted to look the same as excel
                     try
                     {
-                        sval = formatter.FormatCellValue(cell, dummyEvaluator);
+                        // Excel localizes its built-in date formats (numFmt ids 14-22) to the
+                        // operating system locale, which commonly renders 4-digit years, whereas
+                        // the canonical POI format string only stores 2 ("m/d/yy"). Measure the
+                        // wider localized rendering for these formats so AutoSizeColumn does not
+                        // clip localized date/time values.
+                        DataFormatter dateAwareFormatter = UsesLocaleWidenedBuiltinDateFormat(cell)
+                            ? GetFourDigitYearDateFormatter()
+                            : formatter;
+                        sval = dateAwareFormatter.FormatCellValue(cell, dummyEvaluator);
                     }
                     catch
                     {
@@ -1067,6 +1075,40 @@ namespace NPOI.SS.Util
             }
         }
 
+        /// <summary>
+        /// Determines whether a cell uses one of Excel's built-in, locale-dependent date
+        /// formats that store only a 2-digit year. Excel renders these using the operating
+        /// system locale (commonly a 4-digit year), so measuring the canonical 2-digit POI
+        /// rendering undersizes the column during auto-sizing.
+        /// </summary>
+        private static bool UsesLocaleWidenedBuiltinDateFormat(ICell cell)
+        {
+            if (!DateUtil.IsCellDateFormatted(cell))
+                return false;
+
+            switch (cell.CellStyle.DataFormat)
+            {
+                case 0x0e: // m/d/yy
+                case 0x0f: // d-mmm-yy
+                case 0x11: // mmm-yy
+                case 0x16: // m/d/yy h:mm
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        /// <summary>
+        /// Returns a <see cref="DataFormatter"/>, cached per culture, that expands 2-digit years
+        /// to 4 digits so measured widths match Excel's localized rendering of built-in date formats.
+        /// </summary>
+        private static DataFormatter GetFourDigitYearDateFormatter()
+        {
+            return _fourDigitYearDateFormatters.GetOrAdd(
+                CultureInfo.CurrentCulture,
+                _ => new DataFormatter { Use4DigitYearsInAllDateFormats = true });
+        }
+
         // --- Units ---
         private static double PxToPt(double px) => px * (POINTS_PER_INCH / dpi);
 
@@ -1216,7 +1258,8 @@ namespace NPOI.SS.Util
             int defaultCharWidth = GetDefaultCharWidth(sheet.Workbook);
 
             // No need to explore the whole sheet: explore only the first maxRows lines
-            if (maxRows > 0 && lastRow - firstRow > maxRows) lastRow = firstRow + maxRows;
+            if (maxRows > 0 && lastRow - firstRow > maxRows)
+                lastRow = firstRow + maxRows;
 
             double width = -1;
             for (int rowIdx = firstRow; rowIdx <= lastRow; ++rowIdx)
@@ -1472,6 +1515,7 @@ namespace NPOI.SS.Util
         private static readonly ConcurrentDictionary<FontCacheKey, float> _defaultCharWdths = new();
         private static readonly ConcurrentDictionary<FontCacheKey, TextOptions> _optsCache = new();
         private static readonly ConcurrentDictionary<(ISheet, int, int, int, int), double> _mergedWidthCache = new(); // memoize total pixel width of merged region once
+        private static readonly ConcurrentDictionary<CultureInfo, DataFormatter> _fourDigitYearDateFormatters = new(); // per-culture formatter that widens 2-digit years for width measurement
 
         private static FontStyle GetStyle(Font font)
         {
