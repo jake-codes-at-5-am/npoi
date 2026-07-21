@@ -71,7 +71,7 @@ namespace TestCases.SS.UserModel
             row.CreateCell(5).SetCellValue("10.0000");
 
             // autosize not-Evaluated cells, formula cells are sized as if the result is 0
-            for (int i = 0; i < 6; i++) 
+            for (int i = 0; i < 6; i++)
                 sheet.AutoSizeColumn(i);
 
             Assert.IsTrue(sheet.GetColumnWidth(0) < sheet.GetColumnWidth(1));  // width of '0' is less then width of '10'
@@ -168,7 +168,7 @@ namespace TestCases.SS.UserModel
             cell7.CellStyle = (/*setter*/style3); // should be sized as 'Jan'
 
             // autosize not-Evaluated cells, formula cells are sized as if the result is 0
-            for (int i = 0; i < 8; i++) 
+            for (int i = 0; i < 8; i++)
                 sheet.AutoSizeColumn(i);
             Assert.AreEqual(sheet.GetColumnWidth(2), sheet.GetColumnWidth(1)); // date formatted as 'm'
             Assert.IsTrue(sheet.GetColumnWidth(3) > sheet.GetColumnWidth(1));  // 'mmm' is wider than 'm'
@@ -193,6 +193,56 @@ namespace TestCases.SS.UserModel
 
             workbook.Close();
         }
+
+        [Test]
+        public void DateTimeColumnFitsLocalizedFourDigitYear()
+        {
+            // Excel localizes its built-in date formats (e.g. numFmt 22 "m/d/yy h:mm")
+            // to the operating system locale, which renders a 4-digit year. AutoSizeColumn must
+            // size the column for that localized rendering, not the canonical 2-digit POI string,
+            // otherwise the date column is too narrow and Excel shows "####".
+            var previousCulture = System.Threading.Thread.CurrentThread.CurrentCulture;
+            System.Threading.Thread.CurrentThread.CurrentCulture = System.Globalization.CultureInfo.CreateSpecificCulture("en-US");
+            try
+            {
+                IWorkbook workbook = _testDataProvider.CreateWorkbook();
+                FixFonts(workbook);
+                ISheet sheet = workbook.CreateSheet();
+                TrackColumnsForAutoSizingIfSXSSF(sheet);
+
+                ICellStyle dateStyle = workbook.CreateCellStyle();
+                dateStyle.DataFormat = 22; // built-in "m/d/yy h:mm"
+
+                DateTime value = new DateTime(2026, 1, 20, 13, 8, 0);
+                for (int r = 0; r < 5; r++)
+                {
+                    // Column 0: date cell using the built-in, locale-dependent format.
+                    ICell dateCell = sheet.CreateRow(r).CreateCell(0);
+                    dateCell.SetCellValue(value);
+                    dateCell.CellStyle = dateStyle;
+
+                    // Column 1: the canonical 2-digit rendering stored as literal text.
+                    sheet.GetRow(r).CreateCell(1).SetCellValue("1/20/26 13:08");
+                }
+
+                sheet.AutoSizeColumn(0);
+                sheet.AutoSizeColumn(1);
+
+                // Excel displays the built-in date as "1/20/2026 13:08" (4-digit year), which is
+                // wider than its 2-digit form. The auto-sized date column must therefore be wider
+                // than a column holding only the 2-digit text, proving the localized width is used.
+                Assert.IsTrue(sheet.GetColumnWidth(0) > sheet.GetColumnWidth(1),
+                    "Date column (" + sheet.GetColumnWidth(0) + ") should be wider than the 2-digit text column ("
+                    + sheet.GetColumnWidth(1) + ") to fit Excel's localized 4-digit-year rendering.");
+
+                workbook.Close();
+            }
+            finally
+            {
+                System.Threading.Thread.CurrentThread.CurrentCulture = previousCulture;
+            }
+        }
+
         [Test]
         public void StringCells()
         {
