@@ -241,6 +241,16 @@ namespace NPOI.XSSF.EventUserModel
                                 fmtString = cs.GetDataFormatString();
                             }
                         }
+                        // A numeric cell with no style (or a style whose format string can't be
+                        // resolved) uses Excel's implicit "General" format. DataFormatter.GetFormat
+                        // calls formatStrIn.IndexOf(';') with no null guard (unlike its ICell
+                        // overload), so a null fmtString here would NRE - this is spec-valid and
+                        // common: SXSSF and other minimal writers emit unstyled numeric cells like
+                        // <c r="A1"><v>123</v></c> with no "s" attribute at all.
+                        if (string.IsNullOrEmpty(fmtString))
+                        {
+                            fmtString = "General";
+                        }
                         if (DateUtil.IsADateFormat(numFmtId, fmtString))
                         {
                             raw = DateUtil.GetJavaDate(d);

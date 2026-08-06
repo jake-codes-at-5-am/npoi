@@ -153,5 +153,40 @@ namespace NPOI.XSSF.EventUserModel
             Assert.IsTrue(handler.Events.Exists(e => e.StartsWith("C:D1:Error:#DIV/0!")));
             Assert.IsTrue(handler.Events.Exists(e => e.StartsWith("C:E1:Blank:")));
         }
+
+        [Test]
+        public void ParsesUnstyledNumericCellsWithoutThrowing()
+        {
+            // Spec-valid and common: minimal writers (SXSSF and others) emit numeric cells
+            // with no "s" (style) attribute at all, e.g. <c r="A1"><v>123</v></c>. An unstyled
+            // numeric cell uses Excel's implicit "General" format; EmitCell must not pass a
+            // null format string down to DataFormatter.FormatRawCellContents in that case.
+            const string xml =
+                "<?xml version=\"1.0\"?>" +
+                "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+                "<sheetData>" +
+                "<row r=\"1\">" +
+                "<c r=\"A1\"><v>123</v></c>" +
+                "<c r=\"B1\" t=\"n\"><v>45.6</v></c>" +
+                "</row>" +
+                "</sheetData>" +
+                "</worksheet>";
+
+            var styles = new StylesTable();
+            var strings = new ReadOnlySharedStringsTable(new MemoryStream(Encoding.UTF8.GetBytes(
+                "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>")));
+            var handler = new Collector();
+            using (Stream s = new MemoryStream(Encoding.UTF8.GetBytes(xml)))
+            {
+                var h = new XSSFSheetXMLHandler(s, styles, strings, handler);
+                Assert.DoesNotThrow(() => { while (h.ParseNextRow()) { } });
+            }
+
+            Assert.IsTrue(handler.Events.Exists(e => e.StartsWith("C:A1:Number:123")));
+            Assert.IsTrue(handler.Events.Exists(e => e.StartsWith("C:B1:Number:45.6")));
+            // The formatted text must be present and non-empty, not just the raw value.
+            string a1 = handler.Events.Find(e => e.StartsWith("C:A1:Number:"));
+            Assert.IsFalse(string.IsNullOrEmpty(a1.Split(':')[4]));
+        }
     }
 }
