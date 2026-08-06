@@ -71,7 +71,20 @@ namespace NPOI.XSSF.Model
                 {
                     if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "si")
                     {
-                        current = new StringBuilder();
+                        if (reader.IsEmptyElement)
+                        {
+                            // A self-closing <si/> is schema-valid and represents an empty shared
+                            // string. XmlReader never raises a separate EndElement for it, so if we
+                            // set `current` here we would never see the matching "si end" branch
+                            // below to flush it - the next <si> would just overwrite `current`,
+                            // silently dropping this entry and shifting every later index by one.
+                            // Record it immediately instead, and leave `current` untouched (null).
+                            _strings.Add(string.Empty);
+                        }
+                        else
+                        {
+                            current = new StringBuilder();
+                        }
                     }
                     else if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "t" && current != null)
                     {
@@ -84,7 +97,9 @@ namespace NPOI.XSSF.Model
                             // let the outer loop consume </t> on its next iteration (harmless, matches
                             // neither the "si" nor "t"-start branch).
                             reader.Read();
-                            if (reader.NodeType == XmlNodeType.Text || reader.NodeType == XmlNodeType.SignificantWhitespace)
+                            if (reader.NodeType == XmlNodeType.Text
+                                || reader.NodeType == XmlNodeType.SignificantWhitespace
+                                || reader.NodeType == XmlNodeType.CDATA)
                             {
                                 current.Append(reader.Value);
                             }
