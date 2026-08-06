@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Text;
 using NPOI.OpenXml4Net.OPC;
 using NPOI.SS.UserModel;
 using NPOI.XSSF.EventUserModel;
@@ -114,6 +115,43 @@ namespace NPOI.XSSF.EventUserModel
                 File.Delete(path);
             }
             finally { System.Threading.Thread.CurrentThread.CurrentCulture = prev; }
+        }
+
+        [Test]
+        public void ParsesInlineStringFormulaStringErrorAndBlankCells()
+        {
+            // Fed as a literal worksheet-XML fragment (bypassing XSSFWorkbook, which always
+            // prefers shared strings) so the t="inlineStr" / t="str" / t="e" / self-closing-cell
+            // paths in ReadInlineString/EmitCell get real coverage.
+            const string xml =
+                "<?xml version=\"1.0\"?>" +
+                "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+                "<sheetData>" +
+                "<row r=\"1\">" +
+                "<c r=\"A1\" t=\"inlineStr\"><is><t>Hello</t></is></c>" +
+                "<c r=\"B1\" t=\"inlineStr\"><is><r><t>Wor</t></r><r><t>ld</t></r></is></c>" +
+                "<c r=\"C1\" t=\"str\"><f>A1</f><v>calc</v></c>" +
+                "<c r=\"D1\" t=\"e\"><v>#DIV/0!</v></c>" +
+                "<c r=\"E1\"/>" +
+                "</row>" +
+                "</sheetData>" +
+                "</worksheet>";
+
+            var styles = new StylesTable();
+            var strings = new ReadOnlySharedStringsTable(new MemoryStream(Encoding.UTF8.GetBytes(
+                "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>")));
+            var handler = new Collector();
+            using (Stream s = new MemoryStream(Encoding.UTF8.GetBytes(xml)))
+            {
+                var h = new XSSFSheetXMLHandler(s, styles, strings, handler);
+                while (h.ParseNextRow()) { }
+            }
+
+            CollectionAssert.Contains(handler.Events, "C:A1:String:Hello:Hello");
+            CollectionAssert.Contains(handler.Events, "C:B1:String:World:World");
+            Assert.IsTrue(handler.Events.Exists(e => e.StartsWith("C:C1:Formula:calc")));
+            Assert.IsTrue(handler.Events.Exists(e => e.StartsWith("C:D1:Error:#DIV/0!")));
+            Assert.IsTrue(handler.Events.Exists(e => e.StartsWith("C:E1:Blank:")));
         }
     }
 }
