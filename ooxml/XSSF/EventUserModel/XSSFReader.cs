@@ -77,7 +77,7 @@ namespace NPOI.XSSF.EventUserModel
             return _sst ?? (_sst = new ReadOnlySharedStringsTable(_pkg));
         }
 
-        public IReadOnlyList<SheetRef> GetSheets() => _sheets;
+        public IReadOnlyList<SheetRef> GetSheets() => _sheets.AsReadOnly();
 
         public Stream GetSheetStream(int index)
         {
