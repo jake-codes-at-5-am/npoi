@@ -58,6 +58,41 @@ namespace NPOI.XSSF.Model
         }
 
         [Test]
+        public void SelfClosingSiAtFirstAndLastPositionKeepIndices()
+        {
+            var sst = new ReadOnlySharedStringsTable(Xml(
+                "<si/><si><t>Mid</t></si><si/>"));
+
+            Assert.AreEqual(3, sst.Count);
+            Assert.AreEqual(string.Empty, sst.GetEntryAt(0));
+            Assert.AreEqual("Mid", sst.GetEntryAt(1));
+            Assert.AreEqual(string.Empty, sst.GetEntryAt(2));
+        }
+
+        [Test]
+        public void ConsecutiveSelfClosingSiEachYieldEmptyString()
+        {
+            var sst = new ReadOnlySharedStringsTable(Xml(
+                "<si><t>Before</t></si><si/><si/><si><t>After</t></si>"));
+
+            Assert.AreEqual(4, sst.Count);
+            Assert.AreEqual("Before", sst.GetEntryAt(0));
+            Assert.AreEqual(string.Empty, sst.GetEntryAt(1));
+            Assert.AreEqual(string.Empty, sst.GetEntryAt(2));
+            Assert.AreEqual("After", sst.GetEntryAt(3));
+        }
+
+        [Test]
+        public void CDataInsideRichRunIsPreserved()
+        {
+            var sst = new ReadOnlySharedStringsTable(Xml(
+                "<si><r><t>Ga</t></r><r><t><![CDATA[mma]]></t></r></si>"));
+
+            Assert.AreEqual(1, sst.Count);
+            Assert.AreEqual("Gamma", sst.GetEntryAt(0));
+        }
+
+        [Test]
         public void ReadsSharedStringsFromOpcPackage()
         {
             FileInfo file = TempFile.CreateTempFile("TestReadOnlySharedStringsTable-", ".xlsx");
