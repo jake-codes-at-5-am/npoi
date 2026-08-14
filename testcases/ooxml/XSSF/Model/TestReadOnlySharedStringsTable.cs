@@ -93,6 +93,30 @@ namespace NPOI.XSSF.Model
         }
 
         [Test]
+        public void MixedTextAndCDataInsideTIsConcatenated()
+        {
+            // A single <t> may interleave plain text and CDATA sections; every
+            // Text/CDATA node up to the matching </t> must be appended in order.
+            var sst = new ReadOnlySharedStringsTable(Xml(
+                "<si><t>abc<![CDATA[def]]></t></si>"));
+
+            Assert.AreEqual(1, sst.Count);
+            Assert.AreEqual("abcdef", sst.GetEntryAt(0));
+        }
+
+        [Test]
+        public void PhoneticRunInSharedStringIsSkipped()
+        {
+            // Phonetic (ruby) guides live in <rPh> runs inside the <si> and must NOT
+            // be merged into the base string value, or CJK strings get corrupted.
+            var sst = new ReadOnlySharedStringsTable(Xml(
+                "<si><t>漢字</t><rPh sb=\"0\" eb=\"2\"><t>かんじ</t></rPh></si>"));
+
+            Assert.AreEqual(1, sst.Count);
+            Assert.AreEqual("漢字", sst.GetEntryAt(0));
+        }
+
+        [Test]
         public void ReadsSharedStringsFromOpcPackage()
         {
             FileInfo file = TempFile.CreateTempFile("TestReadOnlySharedStringsTable-", ".xlsx");

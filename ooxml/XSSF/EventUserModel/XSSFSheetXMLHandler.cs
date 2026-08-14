@@ -21,6 +21,7 @@ using System.IO;
 using System.Text;
 using System.Xml;
 using NPOI.SS.UserModel;
+using NPOI.SS.Util;
 using NPOI.XSSF.Model;
 using NPOI.XSSF.UserModel;
 
@@ -39,13 +40,22 @@ namespace NPOI.XSSF.EventUserModel
         private readonly ReadOnlySharedStringsTable _strings;
         private readonly SheetContentsHandler _handler;
         private readonly DataFormatter _formatter = new DataFormatter();
+        private readonly bool _use1904Windowing;
+
+        // Both the row's `r` and a cell's `r` are OPTIONAL in the schema; when absent, position
+        // is implied by document order. These counters track the next implicit index. An explicit
+        // `r` re-syncs the counter so a later bare element continues from the right place.
+        private int _nextRow;
+        private int _nextCol;
 
         public XSSFSheetXMLHandler(Stream sheetStream, StylesTable styles,
-            ReadOnlySharedStringsTable strings, SheetContentsHandler handler)
+            ReadOnlySharedStringsTable strings, SheetContentsHandler handler,
+            bool use1904Windowing = false)
         {
             _styles = styles;
             _strings = strings;
             _handler = handler;
+            _use1904Windowing = use1904Windowing;
             _reader = XmlReader.Create(sheetStream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit });
         }
 
@@ -56,7 +66,11 @@ namespace NPOI.XSSF.EventUserModel
             {
                 if (_reader.NodeType == XmlNodeType.Element && _reader.LocalName == "row")
                 {
-                    int rowNum = ParseInt(_reader.GetAttribute("r"), 1) - 1;
+                    // `r` is optional; when absent the row's index is implied by document order.
+                    // An explicit `r` re-syncs the running counter so later bare rows follow on.
+                    string r = _reader.GetAttribute("r");
+                    int rowNum = r != null ? ParseInt(r, 1) - 1 : _nextRow;
+                    _nextRow = rowNum + 1;
                     bool empty = _reader.IsEmptyElement;
                     _handler.StartRow(rowNum);
                     if (!empty)
@@ -73,6 +87,7 @@ namespace NPOI.XSSF.EventUserModel
         private void ReadRowCells(int rowNum)
         {
             int depth = _reader.Depth;
+            _nextCol = 0;
             while (_reader.Read())
             {
                 if (_reader.NodeType == XmlNodeType.EndElement && _reader.LocalName == "row" && _reader.Depth == depth)
@@ -81,14 +96,31 @@ namespace NPOI.XSSF.EventUserModel
                 }
                 if (_reader.NodeType == XmlNodeType.Element && _reader.LocalName == "c")
                 {
-                    ReadCell();
+                    ReadCell(rowNum);
                 }
             }
         }
 
-        private void ReadCell()
+        private void ReadCell(int rowNum)
         {
-            string cellRef = _reader.GetAttribute("r") ?? string.Empty;
+            // `r` is optional on <c>; when absent the column is implied by document order. When
+            // present, still advance the counter from it so a later bare cell follows on correctly.
+            string r = _reader.GetAttribute("r");
+            int col;
+            string cellRef;
+            if (!string.IsNullOrEmpty(r))
+            {
+                col = ColumnFromRef(r);
+                cellRef = r;
+            }
+            else
+            {
+                col = _nextCol;
+                cellRef = CellReference.ConvertNumToColString(col)
+                    + (rowNum + 1).ToString(CultureInfo.InvariantCulture);
+            }
+            _nextCol = col + 1;
+
             string type = _reader.GetAttribute("t");
             string styleIdx = _reader.GetAttribute("s");
             bool cellIsEmpty = _reader.IsEmptyElement;
@@ -132,17 +164,16 @@ namespace NPOI.XSSF.EventUserModel
 
         /// <summary>
         /// Reads the text content of a simple leaf element (e.g. &lt;v&gt;123&lt;/v&gt;) whose
-        /// current node is its StartElement, WITHOUT using XmlReader.ReadElementContentAsString().
-        /// That method advances the reader past the element's EndElement onto the *next* node,
-        /// but every caller here sits inside a while(_reader.Read()) loop that scopes its own
-        /// boundary by depth/name on EndElement; skipping straight past the EndElement would
-        /// make the loop's next Read() consume (and lose) whatever node follows - typically the
-        /// enclosing element's own EndElement (e.g. &lt;/c&gt;), which would then overrun into the
-        /// next sibling and corrupt cell/row boundaries. Instead: manually step onto the Text
-        /// node and read its Value, leaving the EndElement for the caller's loop to consume on
-        /// its own next iteration (matches neither the "v"/"f" start branch nor the boundary
-        /// check, so it's a harmless no-op there). Mirrors the fix already applied in
-        /// ReadOnlySharedStringsTable.ReadFrom for the identical class of bug.
+        /// current node is its StartElement. Loops to the matching EndElement (same depth),
+        /// appending every Text, SignificantWhitespace, and CDATA node, and breaks ON that
+        /// EndElement - leaving the reader positioned on it. The caller's own enclosing
+        /// while(_reader.Read()) loop then advances past that EndElement on its next iteration;
+        /// it matches neither a start-element branch nor the caller's boundary check, so it is a
+        /// harmless no-op there. Deliberately NOT XmlReader.ReadElementContentAsString(): that
+        /// over-advances past the EndElement onto the *next* node, which the caller's loop would
+        /// then skip (typically the enclosing &lt;/c&gt;), overrunning into the next sibling and
+        /// corrupting cell/row boundaries. Mirrors the &lt;t&gt; reader in
+        /// ReadOnlySharedStringsTable.ReadFrom, which follows the identical contract.
         /// </summary>
         private string ReadElementText()
         {
@@ -158,7 +189,9 @@ namespace NPOI.XSSF.EventUserModel
                 {
                     break;
                 }
-                if (_reader.NodeType == XmlNodeType.Text || _reader.NodeType == XmlNodeType.SignificantWhitespace)
+                if (_reader.NodeType == XmlNodeType.Text
+                    || _reader.NodeType == XmlNodeType.SignificantWhitespace
+                    || _reader.NodeType == XmlNodeType.CDATA)
                 {
                     sb.Append(_reader.Value);
                 }
@@ -174,13 +207,28 @@ namespace NPOI.XSSF.EventUserModel
             }
             var sb = new StringBuilder();
             int depth = _reader.Depth;
+            // Phonetic (ruby) guides appear as <rPh ...><t>...</t></rPh> runs inside <is> and are
+            // pronunciation metadata, not part of the cell's base text - skip their <t> bodies.
+            bool isPhoneticRun = false;
             while (_reader.Read())
             {
                 if (_reader.NodeType == XmlNodeType.EndElement && _reader.LocalName == "is" && _reader.Depth == depth)
                 {
                     break;
                 }
-                if (_reader.NodeType == XmlNodeType.Element && _reader.LocalName == "t")
+                if (_reader.NodeType == XmlNodeType.Element && _reader.LocalName == "rPh")
+                {
+                    // A self-closing <rPh/> carries no <t> and raises no EndElement - leave the flag.
+                    if (!_reader.IsEmptyElement)
+                    {
+                        isPhoneticRun = true;
+                    }
+                }
+                else if (_reader.NodeType == XmlNodeType.EndElement && _reader.LocalName == "rPh")
+                {
+                    isPhoneticRun = false;
+                }
+                else if (_reader.NodeType == XmlNodeType.Element && _reader.LocalName == "t" && !isPhoneticRun)
                 {
                     sb.Append(ReadElementText());
                 }
@@ -207,8 +255,10 @@ namespace NPOI.XSSF.EventUserModel
                     kind = StreamValueKind.String;
                     break;
                 case "str":
+                    // A cached formula-string result. Its VALUE type is String; formula-ness is
+                    // reported separately via the isFormula flag computed below.
                     raw = text = vText ?? string.Empty;
-                    kind = StreamValueKind.Formula;
+                    kind = StreamValueKind.String;
                     break;
                 case "b":
                     bool b = vText == "1";
@@ -253,7 +303,7 @@ namespace NPOI.XSSF.EventUserModel
                         }
                         if (DateUtil.IsADateFormat(numFmtId, fmtString))
                         {
-                            raw = DateUtil.GetJavaDate(d);
+                            raw = DateUtil.GetJavaDate(d, _use1904Windowing);
                             kind = StreamValueKind.Date;
                         }
                         else
@@ -261,25 +311,33 @@ namespace NPOI.XSSF.EventUserModel
                             raw = d;
                             kind = StreamValueKind.Number;
                         }
-                        text = _formatter.FormatRawCellContents(d, numFmtId, fmtString);
+                        text = _formatter.FormatRawCellContents(d, numFmtId, fmtString, _use1904Windowing);
                     }
                     break;
             }
 
-            // Presence of <f> marks the cell as a formula regardless of the resolved value's
-            // own type - including when the cached <v> is a self-closing/empty element (NPOI
-            // itself writes unevaluated formulas as e.g. "<f>B1*2</f><v/>", which would otherwise
-            // resolve to Blank above and hide the fact that this is a formula cell).
-            if (isFormula && kind != StreamValueKind.Formula)
-            {
-                kind = StreamValueKind.Formula;
-            }
+            // Formula-ness is orthogonal to the value type: a cell is a formula when it carries an
+            // <f> child, OR when it is typed t="str" (a cached formula-string result). The value's
+            // own kind (Number/String/Date/... or Blank for an unevaluated "<f>B1*2</f><v/>") is
+            // preserved above and reported alongside the flag, so consumers see BOTH.
+            bool cellIsFormula = isFormula || type == "str";
 
-            _handler.Cell(cellRef, text, raw, kind);
+            _handler.Cell(cellRef, text, raw, kind, cellIsFormula);
         }
 
         private static int ParseInt(string s, int fallback)
             => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) ? v : fallback;
+
+        /// <summary>Zero-based column index from a cell reference (e.g. "AB12" -> 27).</summary>
+        private static int ColumnFromRef(string r)
+        {
+            int i = 0;
+            while (i < r.Length && !char.IsDigit(r[i]))
+            {
+                i++;
+            }
+            return CellReference.ConvertColStringToIndex(r.Substring(0, i));
+        }
 
         public void Dispose() => _reader?.Dispose();
     }

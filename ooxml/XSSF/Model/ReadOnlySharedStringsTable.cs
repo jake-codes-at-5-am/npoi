@@ -67,6 +67,10 @@ namespace NPOI.XSSF.Model
             using (XmlReader reader = XmlReader.Create(stream, settings))
             {
                 StringBuilder current = null;
+                // Phonetic (ruby) guides appear as <rPh ...><t>...</t></rPh> runs inside an <si>
+                // (or <is>). Their <t> text is pronunciation metadata, NOT part of the base string,
+                // so it must be skipped or CJK values like "漢字" get corrupted into "漢字かんじ".
+                bool isPhoneticRun = false;
                 while (reader.Read())
                 {
                     if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "si")
@@ -84,24 +88,48 @@ namespace NPOI.XSSF.Model
                         else
                         {
                             current = new StringBuilder();
+                            isPhoneticRun = false;
                         }
                     }
-                    else if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "t" && current != null)
+                    else if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "rPh")
+                    {
+                        // A self-closing <rPh/> carries no <t>, so there is nothing to skip and no
+                        // matching EndElement will arrive - leave the flag alone in that case.
+                        if (!reader.IsEmptyElement)
+                        {
+                            isPhoneticRun = true;
+                        }
+                    }
+                    else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "rPh")
+                    {
+                        isPhoneticRun = false;
+                    }
+                    else if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "t"
+                        && current != null && !isPhoneticRun)
                     {
                         if (!reader.IsEmptyElement)
                         {
-                            // Deliberately not using ReadElementContentAsString() here: it leaves the
-                            // reader positioned on the node *after* </t>, and the outer while(reader.Read())
-                            // would then skip that node (typically the enclosing </si>), corrupting the
-                            // si-boundary tracking below. Advance onto the text node manually instead and
-                            // let the outer loop consume </t> on its next iteration (harmless, matches
-                            // neither the "si" nor "t"-start branch).
-                            reader.Read();
-                            if (reader.NodeType == XmlNodeType.Text
-                                || reader.NodeType == XmlNodeType.SignificantWhitespace
-                                || reader.NodeType == XmlNodeType.CDATA)
+                            // Loop to the matching </t> (same depth) appending every Text,
+                            // SignificantWhitespace, AND CDATA node so a <t> that interleaves plain
+                            // text with CDATA sections (e.g. abc<![CDATA[def]]>) is preserved whole.
+                            // Deliberately not using ReadElementContentAsString(): it advances the
+                            // reader onto the node *after* </t>, which the outer while(reader.Read())
+                            // would then skip (typically the enclosing </si>), corrupting boundary
+                            // tracking. Break ON the </t> instead and let the outer loop consume it
+                            // on its next iteration (harmless: matches no branch here).
+                            int depth = reader.Depth;
+                            while (reader.Read())
                             {
-                                current.Append(reader.Value);
+                                if (reader.NodeType == XmlNodeType.EndElement && reader.Depth == depth)
+                                {
+                                    break;
+                                }
+                                if (reader.NodeType == XmlNodeType.Text
+                                    || reader.NodeType == XmlNodeType.SignificantWhitespace
+                                    || reader.NodeType == XmlNodeType.CDATA)
+                                {
+                                    current.Append(reader.Value);
+                                }
                             }
                         }
                     }

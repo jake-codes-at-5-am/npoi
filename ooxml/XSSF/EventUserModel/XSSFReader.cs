@@ -44,6 +44,14 @@ namespace NPOI.XSSF.EventUserModel
         private readonly List<SheetRef> _sheets = new List<SheetRef>();
         private StylesTable _styles;
         private ReadOnlySharedStringsTable _sst;
+        private bool _isDate1904;
+
+        /// <summary>
+        /// True when the workbook uses the 1904 date system (&lt;workbookPr date1904="1"/&gt;),
+        /// as written by Excel for Mac. Callers should thread this into
+        /// <see cref="XSSFSheetXMLHandler"/> so serial dates resolve on the right epoch.
+        /// </summary>
+        public bool IsDate1904 => _isDate1904;
 
         public XSSFReader(OPCPackage pkg)
         {
@@ -109,7 +117,15 @@ namespace NPOI.XSSF.EventUserModel
                 int index = 0;
                 while (reader.Read())
                 {
-                    if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "sheet")
+                    if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "workbookPr")
+                    {
+                        // date1904="1" (or "true") selects the 1904 date system used by Excel for
+                        // Mac; serial dates are then ~4 years and a day off if read as 1900.
+                        string date1904 = reader.GetAttribute("date1904");
+                        _isDate1904 = date1904 == "1"
+                            || string.Equals(date1904, "true", StringComparison.OrdinalIgnoreCase);
+                    }
+                    else if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "sheet")
                     {
                         string name = reader.GetAttribute("name");
                         string rid = reader.GetAttribute("id", relNs);
