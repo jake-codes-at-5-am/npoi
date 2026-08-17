@@ -28,7 +28,7 @@ using NPOI.XSSF.UserModel;
 namespace NPOI.XSSF.EventUserModel
 {
     /// <summary>
-    /// Incrementally parses a single worksheet's XML, emitting SheetContentsHandler
+    /// Incrementally parses a single worksheet's XML, emitting ISheetContentsHandler
     /// callbacks one row at a time. Faithful in shape to Apache POI's
     /// XSSFSheetXMLHandler, driven by a pull XmlReader so an IEnumerable consumer
     /// can advance row-by-row.
@@ -38,7 +38,7 @@ namespace NPOI.XSSF.EventUserModel
         private readonly XmlReader _reader;
         private readonly StylesTable _styles;
         private readonly ReadOnlySharedStringsTable _strings;
-        private readonly SheetContentsHandler _handler;
+        private readonly ISheetContentsHandler _handler;
         private readonly DataFormatter _formatter = new DataFormatter();
         private readonly bool _use1904Windowing;
 
@@ -49,14 +49,19 @@ namespace NPOI.XSSF.EventUserModel
         private int _nextCol;
 
         public XSSFSheetXMLHandler(Stream sheetStream, StylesTable styles,
-            ReadOnlySharedStringsTable strings, SheetContentsHandler handler,
+            ReadOnlySharedStringsTable strings, ISheetContentsHandler handler,
             bool use1904Windowing = false)
         {
             _styles = styles;
             _strings = strings;
             _handler = handler;
             _use1904Windowing = use1904Windowing;
-            _reader = XmlReader.Create(sheetStream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit });
+            // CloseInput = true hands stream ownership to the XmlReader: disposing this handler
+            // (which disposes _reader) then closes the wrapped sheet Stream, so the caller does
+            // not have to. The ctor already takes ownership of the XmlReader, so owning the
+            // underlying stream too is the less-surprising contract.
+            _reader = XmlReader.Create(sheetStream,
+                new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, CloseInput = true });
         }
 
         /// <summary>Parse forward until one full &lt;row&gt; is emitted. False at end of sheet.</summary>
@@ -245,9 +250,23 @@ namespace NPOI.XSSF.EventUserModel
             switch (type)
             {
                 case "s":
-                    raw = text = !string.IsNullOrEmpty(vText)
-                        ? _strings.GetEntryAt(int.Parse(vText, CultureInfo.InvariantCulture))
-                        : string.Empty;
+                    if (!string.IsNullOrEmpty(vText))
+                    {
+                        int sstIndex = ParseSharedStringIndex(vText, cellRef);
+                        try
+                        {
+                            raw = text = _strings.GetEntryAt(sstIndex);
+                        }
+                        catch (ArgumentOutOfRangeException ex)
+                        {
+                            throw new FormatException(
+                                $"Cell {cellRef} references shared-string index {sstIndex}, which is out of range.", ex);
+                        }
+                    }
+                    else
+                    {
+                        raw = text = string.Empty;
+                    }
                     kind = StreamValueKind.String;
                     break;
                 case "inlineStr":
@@ -270,6 +289,22 @@ namespace NPOI.XSSF.EventUserModel
                     raw = text = vText ?? string.Empty;
                     kind = StreamValueKind.Error;
                     break;
+                case "d":
+                    // ISO-8601 date cell: the <v> carries a textual date (e.g. "2026-08-06"), not
+                    // a numeric serial, so it is epoch-independent (no 1900/1904 windowing).
+                    if (string.IsNullOrEmpty(vText))
+                    {
+                        raw = null;
+                        text = string.Empty;
+                        kind = StreamValueKind.Blank;
+                    }
+                    else
+                    {
+                        raw = ParseIsoDate(vText, cellRef);
+                        text = vText;
+                        kind = StreamValueKind.Date;
+                    }
+                    break;
                 default: // "n" or absent
                     if (string.IsNullOrEmpty(vText))
                     {
@@ -279,7 +314,7 @@ namespace NPOI.XSSF.EventUserModel
                     }
                     else
                     {
-                        double d = double.Parse(vText, CultureInfo.InvariantCulture);
+                        double d = ParseNumber(vText, cellRef);
                         int numFmtId = 0;
                         string fmtString = null;
                         if (!string.IsNullOrEmpty(styleIdx))
@@ -327,6 +362,41 @@ namespace NPOI.XSSF.EventUserModel
 
         private static int ParseInt(string s, int fallback)
             => int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int v) ? v : fallback;
+
+        // Value-parse helpers that name the offending cell on failure. A malformed value in a
+        // third-party file should abort with a message pointing at the exact cell, not an
+        // anonymous FormatException/out-of-range from deep in the switch.
+        private static double ParseNumber(string vText, string cellRef)
+        {
+            if (double.TryParse(vText, NumberStyles.Float | NumberStyles.AllowThousands,
+                    CultureInfo.InvariantCulture, out double d))
+            {
+                return d;
+            }
+            throw new FormatException(
+                $"Cell {cellRef} has a numeric value '{vText}' that could not be parsed as a number.");
+        }
+
+        private static int ParseSharedStringIndex(string vText, string cellRef)
+        {
+            if (int.TryParse(vText, NumberStyles.Integer, CultureInfo.InvariantCulture, out int i))
+            {
+                return i;
+            }
+            throw new FormatException(
+                $"Cell {cellRef} has a shared-string index '{vText}' that could not be parsed as an integer.");
+        }
+
+        private static DateTime ParseIsoDate(string vText, string cellRef)
+        {
+            if (DateTime.TryParse(vText, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind,
+                    out DateTime dt))
+            {
+                return dt;
+            }
+            throw new FormatException(
+                $"Cell {cellRef} has an ISO date value '{vText}' that could not be parsed as a date.");
+        }
 
         /// <summary>Zero-based column index from a cell reference (e.g. "AB12" -> 27).</summary>
         private static int ColumnFromRef(string r)

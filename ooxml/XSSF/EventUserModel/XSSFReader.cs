@@ -56,13 +56,28 @@ namespace NPOI.XSSF.EventUserModel
         public XSSFReader(OPCPackage pkg)
         {
             _pkg = pkg ?? throw new ArgumentNullException(nameof(pkg));
-            List<PackagePart> wbParts = pkg.GetPartsByContentType(XSSFRelation.WORKBOOK.ContentType);
-            if (wbParts.Count == 0)
+            // The main workbook part can carry any of several content types depending on how the
+            // file was produced: a plain .xlsx, a macro workbook (.xlsm), a template (.xltx), a
+            // macro template (.xltm), or a macro add-in (.xlam). All share the same streamable XML
+            // schema. XLSB_BINARY_WORKBOOK is deliberately excluded - that is the binary (.xlsb)
+            // format, which this XML reader cannot parse. Take the first content type that resolves.
+            List<PackagePart> wbParts = null;
+            foreach (XSSFRelation rel in new[]
             {
-                // Some producers use the macro/template content type.
-                wbParts = pkg.GetPartsByContentType(XSSFRelation.MACROS_WORKBOOK.ContentType);
+                XSSFRelation.WORKBOOK,
+                XSSFRelation.MACROS_WORKBOOK,
+                XSSFRelation.TEMPLATE_WORKBOOK,
+                XSSFRelation.MACRO_TEMPLATE_WORKBOOK,
+                XSSFRelation.MACRO_ADDIN_WORKBOOK,
+            })
+            {
+                wbParts = pkg.GetPartsByContentType(rel.ContentType);
+                if (wbParts.Count > 0)
+                {
+                    break;
+                }
             }
-            if (wbParts.Count == 0)
+            if (wbParts == null || wbParts.Count == 0)
             {
                 throw new ArgumentException("Package does not contain a workbook part (is this a valid .xlsx?).");
             }
@@ -100,7 +115,9 @@ namespace NPOI.XSSF.EventUserModel
         {
             foreach (SheetRef s in _sheets)
             {
-                if (string.Equals(s.Name, name, StringComparison.Ordinal))
+                // Match XSSFWorkbook.GetSheet(String)'s case-insensitive lookup. Excel forbids two
+                // sheets whose names differ only in case, so there is never an ambiguous match.
+                if (string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase))
                 {
                     return s.Part.GetInputStream();
                 }

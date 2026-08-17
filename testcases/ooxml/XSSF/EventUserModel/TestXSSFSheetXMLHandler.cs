@@ -15,7 +15,7 @@ namespace NPOI.XSSF.EventUserModel
     [TestFixture]
     public class TestXSSFSheetXMLHandler
     {
-        private sealed class Collector : SheetContentsHandler
+        private sealed class Collector : ISheetContentsHandler
         {
             public readonly List<string> Events = new List<string>();
             public void StartRow(int r) => Events.Add($"SR:{r}");
@@ -31,7 +31,6 @@ namespace NPOI.XSSF.EventUserModel
                 // ":F" suffix records formula-ness, now reported separately from the value kind.
                 Events.Add($"C:{reference}:{kind}:{rawText}:{text}" + (isFormula ? ":F" : ""));
             }
-            public void HeaderFooter(string t, bool h, string n) { }
         }
 
         [Test]
@@ -278,7 +277,36 @@ namespace NPOI.XSSF.EventUserModel
             CollectionAssert.Contains(handler.Events, "C:A5:String:e:e");
         }
 
-        private sealed class FirstDateCapture : SheetContentsHandler
+        private sealed class DisposeTrackingStream : MemoryStream
+        {
+            public bool Disposed;
+            public DisposeTrackingStream(byte[] buffer) : base(buffer) { }
+            protected override void Dispose(bool disposing)
+            {
+                Disposed = true;
+                base.Dispose(disposing);
+            }
+        }
+
+        [Test]
+        public void DisposingHandlerClosesTheSheetStream()
+        {
+            // The handler takes ownership of the sheet stream (CloseInput = true), so disposing it
+            // must close the stream. The only production consumer relies on this rather than
+            // disposing the stream itself.
+            var sheet = new DisposeTrackingStream(Encoding.UTF8.GetBytes(
+                "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData/></worksheet>"));
+            var styles = new StylesTable();
+            var strings = new ReadOnlySharedStringsTable(new MemoryStream(Encoding.UTF8.GetBytes(
+                "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>")));
+
+            var handler = new XSSFSheetXMLHandler(sheet, styles, strings, new Collector());
+            Assert.IsFalse(sheet.Disposed);
+            handler.Dispose();
+            Assert.IsTrue(sheet.Disposed, "Disposing the handler should close the sheet stream (CloseInput=true).");
+        }
+
+        private sealed class FirstDateCapture : ISheetContentsHandler
         {
             public DateTime? Value;
             public void StartRow(int r) { }
@@ -290,7 +318,6 @@ namespace NPOI.XSSF.EventUserModel
                     Value = dt;
                 }
             }
-            public void HeaderFooter(string t, bool h, string n) { }
         }
 
         private static DateTime ReadFirstDate(XSSFReader reader, StylesTable styles,
@@ -344,6 +371,129 @@ namespace NPOI.XSSF.EventUserModel
                 pkg.Close();
             }
             File.Delete(path);
+        }
+
+        [Test]
+        public void Date1904FlagIsReadFromWorkbookPrAndThreadedThrough()
+        {
+            // End-to-end: author a workbook that really writes <workbookPr date1904="1"/>, so
+            // XSSFReader.LoadSheetRefs must READ that attribute (not a hand-passed literal). The
+            // date cell's serial is written on the 1904 epoch (SetCellValue honours the workbook's
+            // setting at set-time, so the flag is set BEFORE the cell is created), so reading it
+            // back with reader.IsDate1904 reconstructs the authored date exactly, while misreading
+            // it on the 1900 epoch lands ~1462 days (4 years and a day) earlier.
+            string path = Path.Combine(Path.GetTempPath(), "xl263_1904e2e_" + Guid.NewGuid().ToString("N") + ".xlsx");
+            var wb = new XSSFWorkbook();
+            wb.GetCTWorkbook().workbookPr.date1904 = true;
+            ICell date = wb.CreateSheet("S").CreateRow(0).CreateCell(0);
+            ICellStyle ds = wb.CreateCellStyle();
+            ds.DataFormat = wb.CreateDataFormat().GetFormat("yyyy-mm-dd");
+            date.CellStyle = ds;
+            date.SetCellValue(new DateTime(2000, 1, 1));
+            using (FileStream fs = File.Create(path)) { wb.Write(fs); }
+            wb.Close();
+
+            OPCPackage pkg = OPCPackage.Open(path, PackageAccess.READ);
+            try
+            {
+                XSSFReader reader = new XSSFReader(pkg);
+                // The real read of <workbookPr date1904="1"/> in LoadSheetRefs.
+                Assert.IsTrue(reader.IsDate1904, "reader should report the 1904 date system from workbookPr");
+
+                StylesTable styles = reader.GetStylesTable();
+                ReadOnlySharedStringsTable strings = reader.GetSharedStringsTable();
+                DateTime onEpoch1904 = ReadFirstDate(reader, styles, strings, reader.IsDate1904);
+                DateTime misreadOn1900 = ReadFirstDate(reader, styles, strings, false);
+
+                Assert.AreEqual(new DateTime(2000, 1, 1), onEpoch1904);
+                Assert.That((onEpoch1904 - misreadOn1900).TotalDays, Is.EqualTo(1462).Within(1));
+            }
+            finally
+            {
+                pkg.Close();
+            }
+            File.Delete(path);
+        }
+
+        [Test]
+        public void ParsesIsoDateCellsTypedD()
+        {
+            // t="d" carries an ISO-8601 date string in <v> (not a numeric serial). Rare from Excel
+            // but schema-valid; it must resolve to a Date cell whose raw value is the parsed
+            // DateTime. Before the fix these fell into the numeric default and threw FormatException.
+            const string xml =
+                "<?xml version=\"1.0\"?>" +
+                "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+                "<sheetData>" +
+                "<row r=\"1\">" +
+                "<c r=\"A1\" t=\"d\"><v>2026-08-06T00:00:00</v></c>" +
+                "</row>" +
+                "</sheetData>" +
+                "</worksheet>";
+
+            var styles = new StylesTable();
+            var strings = new ReadOnlySharedStringsTable(new MemoryStream(Encoding.UTF8.GetBytes(
+                "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>")));
+            var cap = new FirstDateCapture();
+            using (Stream s = new MemoryStream(Encoding.UTF8.GetBytes(xml)))
+            {
+                var h = new XSSFSheetXMLHandler(s, styles, strings, cap);
+                while (h.ParseNextRow()) { }
+            }
+
+            Assert.IsTrue(cap.Value.HasValue, "t=\"d\" cell should resolve as a Date");
+            Assert.AreEqual(new DateTime(2026, 8, 6, 0, 0, 0), cap.Value.Value);
+        }
+
+        [Test]
+        public void MalformedNumericCellThrowsNamingTheCell()
+        {
+            // A corrupt third-party file with a non-numeric <v> under a numeric cell must abort
+            // with a message that names the offending cell (B2), not an anonymous FormatException,
+            // so the bad file is debuggable rather than silently coerced to Blank.
+            const string xml =
+                "<?xml version=\"1.0\"?>" +
+                "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+                "<sheetData>" +
+                "<row r=\"2\"><c r=\"B2\"><v>not-a-number</v></c></row>" +
+                "</sheetData>" +
+                "</worksheet>";
+
+            var styles = new StylesTable();
+            var strings = new ReadOnlySharedStringsTable(new MemoryStream(Encoding.UTF8.GetBytes(
+                "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>")));
+            var handler = new Collector();
+            using (Stream s = new MemoryStream(Encoding.UTF8.GetBytes(xml)))
+            {
+                var h = new XSSFSheetXMLHandler(s, styles, strings, handler);
+                var ex = Assert.Throws<FormatException>(() => { while (h.ParseNextRow()) { } });
+                StringAssert.Contains("B2", ex.Message);
+            }
+        }
+
+        [Test]
+        public void OutOfRangeSharedStringIndexThrowsNamingTheCell()
+        {
+            // t="s" pointing past the (empty) shared-strings table must name the cell (A1) in the
+            // thrown message rather than surfacing a bare out-of-range from deep in the switch.
+            const string xml =
+                "<?xml version=\"1.0\"?>" +
+                "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">" +
+                "<sheetData>" +
+                "<row r=\"1\"><c r=\"A1\" t=\"s\"><v>7</v></c></row>" +
+                "</sheetData>" +
+                "</worksheet>";
+
+            var styles = new StylesTable();
+            var strings = new ReadOnlySharedStringsTable(new MemoryStream(Encoding.UTF8.GetBytes(
+                "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>")));
+            var handler = new Collector();
+            using (Stream s = new MemoryStream(Encoding.UTF8.GetBytes(xml)))
+            {
+                var h = new XSSFSheetXMLHandler(s, styles, strings, handler);
+                var ex = Assert.Throws<FormatException>(() => { while (h.ParseNextRow()) { } });
+                StringAssert.Contains("A1", ex.Message);
+            }
         }
     }
 }
