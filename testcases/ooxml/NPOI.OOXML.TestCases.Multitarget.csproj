@@ -50,6 +50,10 @@
         </None>
     </ItemGroup>
 
+    <ItemGroup Condition="'$(TargetFramework)' == 'net481'">
+        <Reference Include="System.IO.Compression" />
+    </ItemGroup>
+
 	<Target Name="CopyCustomContent" AfterTargets="AfterBuild">
 		<Copy SourceFiles="App.config" DestinationFiles="$(OutDir)\testhost.dll.config" />
 	</Target>
