@@ -982,7 +982,13 @@ namespace NPOI.SS.UserModel
             }
             else
             {
-                result = numberFormat.Format(decimal.Parse(textValue));
+                // NumberToTextConverter.ToText() always renders with '.' as the decimal point
+                // (it builds the digits manually, independent of any locale), so it must be
+                // parsed back with InvariantCulture. Parsing with the ambient thread culture
+                // (the previous behavior) corrupts the value under cultures where '.' is a
+                // group separator instead of a decimal point (e.g. de-DE turns "12.5" into 125)
+                // or where NumberStyles.Number rejects '.' outright (e.g. fr-FR throws FormatException).
+                result = numberFormat.Format(decimal.Parse(textValue, CultureInfo.InvariantCulture));
             }
             // Complete scientific notation by adding the missing +.
             if (result.Contains("E") && !result.Contains("E-"))
