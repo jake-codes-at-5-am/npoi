@@ -260,12 +260,18 @@ namespace NPOI.OpenXml4Net.Util
             //}
             for (int i = 0; i < t.Length; i++)
             {
-                if (t[i] <= 0x1f && t[i] != '\t' && t[i] != '\n' && t[i] != '\r') //Not Tab, CR or LF
+                if (t[i] == '\t')
                 {
-                    //[0x00-0x0a]-[\r\n\t]
-                    //poi replace those chars with ?
+                    sw.Write("_x0009_");
+                }
+                else if (t[i] == '\r' || t[i] == '\n')
+                {
+                    sw.Write("_x000A_");
+                }
+                else if (t[i] <= 0x1f)
+                {
+                    // Excel and poi replace those chars with ?
                     sw.Write('?');
-                    //sw.Write("_x00{0}_", (t[i] < 0xa ? "0" : "") + ((int)t[i]).ToString("X"));
                 }
                 else if (t[i] == '\uFFFE')
                 {
