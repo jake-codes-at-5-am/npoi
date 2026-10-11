@@ -117,6 +117,16 @@ namespace NPOI.Util
 #endif
         }
 
+        // string overload: netstandard2.0 has no implicit string -> ReadOnlySpan<char> conversion.
+        internal static SixLabors.Fonts.FontRectangle MeasureTextSize(string text, SixLabors.Fonts.TextOptions options)
+        {
+#if NET8_0_OR_GREATER
+            return SixLabors.Fonts.TextMeasurer.MeasureBounds(text, options);
+#else
+            return SixLabors.Fonts.TextMeasurer.MeasureSize(text, options);
+#endif
+        }
+
         internal static bool TryGetSystemFont(string name, out SixLabors.Fonts.FontFamily family)
         {
 #if NET8_0_OR_GREATER
