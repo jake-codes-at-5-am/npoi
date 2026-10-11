@@ -61,8 +61,8 @@ namespace NPOI.SS.Format
          */
         public Rgb24 TextColor
         {
-            get{return _textcolor;}
-            set{_textcolor=value;}
+            get{return POIUtils.ToRgb24(_textcolor);}
+            set{_textcolor=POIUtils.ToColor(value);}
         }
 
         /**

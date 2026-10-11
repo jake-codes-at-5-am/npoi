@@ -88,7 +88,7 @@ namespace NPOI.HSSF.UserModel
             this.verticalPointsPerPixel = verticalPointsPerPixel;
             this.verticalPixelsPerPoint = 1 / verticalPointsPerPixel;
             this.font = new Font(SystemFonts.Get("Arial"), 10);
-            this.foreground = forecolor;
+            this.foreground = POIUtils.ToRgb24(forecolor);
             //        background = backcolor;
         }
 
@@ -105,7 +105,7 @@ namespace NPOI.HSSF.UserModel
         {
             this.escherGroup = escherGroup;
             this.workbook = workbook;
-            this.foreground = foreground;
+            this.foreground = POIUtils.ToRgb24(foreground);
             //        this.background = background;
             this.font = font;
             this.verticalPointsPerPixel = verticalPointsPerPixel;
@@ -143,8 +143,8 @@ namespace NPOI.HSSF.UserModel
 
         public void ClearRect(int x, int y, int width, int height)
         {
-            Color color = foreground;
-            SetColor(background);
+            Color color = POIUtils.ToColor(foreground);
+            SetColor(POIUtils.ToColor(background));
             FillRect(x, y, width, height);
             SetColor(color);
         }
@@ -164,7 +164,7 @@ namespace NPOI.HSSF.UserModel
         public EscherGraphics Create()
         {
             EscherGraphics g = new EscherGraphics(escherGroup, workbook,
-                    foreground, font, verticalPointsPerPixel);
+                    POIUtils.ToColor(foreground), font, verticalPointsPerPixel);
             return g;
         }
 
@@ -293,7 +293,7 @@ namespace NPOI.HSSF.UserModel
                 (int)(font.Size / verticalPixelsPerPoint), font.FontMetrics.Description.Style);
             {
                 var textOptions = new TextOptions(excelFont) { Dpi = dpi };
-                int width = (int)((TextMeasurer.MeasureSize(str, textOptions).Width * 8) + 12);
+                int width = (int)((POIUtils.MeasureTextSize(str, textOptions).Width * 8) + 12);
                 int height = (int)((font.Size / verticalPixelsPerPoint) + 6) * 2;
                 y -= Convert.ToInt32((font.Size / verticalPixelsPerPoint) + 2 * verticalPixelsPerPoint);    // we want to Draw the shape from the top-left
                 HSSFTextbox textbox = escherGroup.CreateTextbox(new HSSFChildAnchor(x, y, x + width, y + height));
@@ -455,7 +455,7 @@ namespace NPOI.HSSF.UserModel
         {
             get
             {
-                return foreground;
+                return POIUtils.ToColor(foreground);
             }
         }
 
@@ -485,7 +485,7 @@ namespace NPOI.HSSF.UserModel
 
         public void SetColor(Color color)
         {
-            foreground = color;
+            foreground = POIUtils.ToRgb24(color);
         }
 
         public void SetFont(Font f)
@@ -521,11 +521,11 @@ namespace NPOI.HSSF.UserModel
         {
             get
             {
-                return background;
+                return POIUtils.ToColor(background);
             }
             set 
             {
-                this.background = value;
+                this.background = POIUtils.ToRgb24(value);
             }
         }
 

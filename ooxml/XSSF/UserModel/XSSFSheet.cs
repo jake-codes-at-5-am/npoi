@@ -6548,7 +6548,11 @@ namespace NPOI.XSSF.UserModel
         public void SetDefaultColWidth(int Width) {
             IFont   ift = GetWorkbook().GetStylesSource().GetFontAt(0);
             Font    ft  = SheetUtil.IFont2Font(ift);
+#if NET8_0_OR_GREATER
+            var     rt  = TextMeasurer.MeasureBounds("0", new TextOptions(ft));   // MeasureSize was removed in SixLabors.Fonts 3.x
+#else
             var     rt  = TextMeasurer.MeasureSize("0", new TextOptions(ft));
+#endif
             double  MDW = rt.Width + 1;                                                     //MaximumDigitWidth
 
             worksheet.sheetFormatPr.defaultColWidth = Width / Units.EMU_PER_PIXEL / MDW;

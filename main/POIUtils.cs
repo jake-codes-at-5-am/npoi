@@ -99,7 +99,32 @@ namespace NPOI.Util
 
         // TODO-ImageSharp: Not sure how to translate System.Drawing.Color.Empty - should
         // we use null instead, or is System.Drawing.Color.Empty used in NPOI like RGB=0?
-        public static readonly Rgb24 Color_Empty = new Rgb24(0, 0, 0);  
+        public static readonly Rgb24 Color_Empty = new Rgb24(0, 0, 0);
+
+        // Color <-> Rgb24 implicit conversions were removed in SixLabors.ImageSharp 4.x; the explicit
+        // FromPixel/ToPixel calls compile and behave identically on every ImageSharp version we target.
+        internal static Color ToColor(Rgb24 pixel) { return Color.FromPixel(pixel); }
+        internal static Rgb24 ToRgb24(Color color) { return color.ToPixel<Rgb24>(); }
+
+        // SixLabors.Fonts 3.x (used with ImageSharp 4.x on net8.0) removed TextMeasurer.MeasureSize and the
+        // culture overload of SystemFonts.TryGet. MeasureBounds returns the same rectangle MeasureSize did.
+        internal static SixLabors.Fonts.FontRectangle MeasureTextSize(System.ReadOnlySpan<char> text, SixLabors.Fonts.TextOptions options)
+        {
+#if NET8_0_OR_GREATER
+            return SixLabors.Fonts.TextMeasurer.MeasureBounds(text, options);
+#else
+            return SixLabors.Fonts.TextMeasurer.MeasureSize(text, options);
+#endif
+        }
+
+        internal static bool TryGetSystemFont(string name, out SixLabors.Fonts.FontFamily family)
+        {
+#if NET8_0_OR_GREATER
+            return SixLabors.Fonts.SystemFonts.TryGet(name, out family);
+#else
+            return SixLabors.Fonts.SystemFonts.TryGet(name, System.Globalization.CultureInfo.CurrentCulture, out family);
+#endif
+        }  
     }
 
 }
