@@ -1715,10 +1715,14 @@ namespace NPOI.OpenXmlFormats.Vml.Office
                 ctObj.aspectratio = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse(node.Attributes["aspectratio"]);
             if (node.Attributes["shapetype"] != null)
                 ctObj.shapetype = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse(node.Attributes["shapetype"]);
+            ctObj.unknownContent = NPOI.OpenXmlFormats.Vml.VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
 
+        private NPOI.OpenXmlFormats.Vml.VmlUnknownContent unknownContent;
 
+        private static readonly string[] KnownAttributes = { "v:ext", "position", "selection", "grouping", "ungrouping", "rotation", "cropping",
+            "verticies", "adjusthandles", "text", "aspectratio", "shapetype" };
 
         internal void Write(StreamWriter sw, string nodeName)
         {
@@ -1736,6 +1740,8 @@ namespace NPOI.OpenXmlFormats.Vml.Office
             NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "text", this.text);
             NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "aspectratio", this.aspectratio);
             NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "shapetype", this.shapetype);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write("/>");
         }
     }

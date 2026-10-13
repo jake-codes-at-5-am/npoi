@@ -55,6 +55,11 @@ namespace NPOI.XSSF.Streaming
         {
             _sharedStringSource = sharedStringsTable;
         }
+
+        /// <summary>
+        /// Number of cells this writer has written as references to the shared strings table (t="s").
+        /// </summary>
+        internal int SharedStringReferenceCount { get; private set; }
         /**
          * Create a temp file to write sheet data. 
          * By default, temp files are created in the default temporary-file directory
@@ -320,6 +325,7 @@ namespace NPOI.XSSF.Streaming
                         {
                             XSSFRichTextString rt = new XSSFRichTextString(cell.StringCellValue);
                             int sRef = _sharedStringSource.AddEntry(rt.GetCTRst());
+                            SharedStringReferenceCount++;
 
                             WriteAsBytes(" t=\"");
                             WriteAsBytes("s");

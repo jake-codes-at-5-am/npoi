@@ -176,24 +176,79 @@ namespace NPOI.OpenXmlFormats.Vml.Spreadsheet
                 ctObj.ObjectType = (ST_ObjectType)Enum.Parse(typeof(ST_ObjectType), node.Attributes["ObjectType"].Value);
             ctObj.column = new List<Int32>();
             ctObj.row = new List<Int32>();
+            ctObj.sourceOrder = new List<string>();
             foreach (XmlNode childNode in node.ChildNodes)
             {
+                if (childNode.NodeType != XmlNodeType.Element)
+                    continue;
                 if (childNode.LocalName == "Anchor")
                     ctObj.anchor = childNode.InnerText;
                 else if (childNode.LocalName == "AutoFill")
-                    ctObj.autoFill = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(childNode.InnerText);
+                {
+                    ctObj.autoFill = ReadTrueFalseBlankElement(childNode);
+                    ctObj.autoFillSpecified = true;
+                }
                 else if (childNode.LocalName == "Visible")
-                    ctObj.visible = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(childNode.InnerText);
+                {
+                    ctObj.visible = ReadTrueFalseBlankElement(childNode);
+                    ctObj.visibleSpecified = IsTrue(ctObj.visible);
+                }
                 else if (childNode.LocalName == "MoveWithCells")
-                    ctObj.moveWithCells = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(childNode.InnerText);
+                {
+                    ctObj.moveWithCells = ReadTrueFalseBlankElement(childNode);
+                    ctObj.moveWithCellsSpecified = IsTrue(ctObj.moveWithCells);
+                }
                 else if (childNode.LocalName == "SizeWithCells")
-                    ctObj.sizeWithCells = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(childNode.InnerText);
+                {
+                    ctObj.sizeWithCells = ReadTrueFalseBlankElement(childNode);
+                    ctObj.sizeWithCellsSpecified = IsTrue(ctObj.sizeWithCells);
+                }
                 else if (childNode.LocalName == "Column")
                     ctObj.column.Add(Int32.Parse(childNode.InnerText));
                 else if (childNode.LocalName == "Row")
                     ctObj.row.Add(Int32.Parse(childNode.InnerText));
+                else
+                {
+                    // everything not modelled above (FmlaMacro, Checked, FmlaLink, FmlaRange, DropStyle, Locked,
+                    // PrintObject, TextHAlign, ...) is kept verbatim so form controls and macro buttons survive a save
+                    ctObj.sourceOrder.Add(UnknownElementPrefix + StripRootNamespaceDeclarations(childNode.OuterXml));
+                    continue;
+                }
+                ctObj.sourceOrder.Add(childNode.LocalName);
             }
             return ctObj;
+        }
+
+        // Element order as read from the source: a modelled element is stored by its local name, an unmodelled one
+        // as its raw XML prefixed with UnknownElementPrefix. Null for a ClientData created in code.
+        private List<string> sourceOrder;
+
+        private const string UnknownElementPrefix = "<";
+
+        // the order Excel writes the modelled elements in, used for new ClientData and for values set after loading
+        private static readonly string[] DefaultOrder = { "MoveWithCells", "SizeWithCells", "Anchor", "AutoFill", "Row", "Column", "Visible" };
+
+        private static string StripRootNamespaceDeclarations(string xml)
+        {
+            return xml.Replace(" xmlns:x=\"urn:schemas-microsoft-com:office:excel\"", string.Empty)
+                .Replace(" xmlns:v=\"urn:schemas-microsoft-com:vml\"", string.Empty)
+                .Replace(" xmlns:o=\"urn:schemas-microsoft-com:office:office\"", string.Empty);
+        }
+
+        private static bool IsTrue(ST_TrueFalseBlank value)
+        {
+            return value == ST_TrueFalseBlank.t || value == ST_TrueFalseBlank.@true;
+        }
+
+        /// <summary>
+        /// An x:ClientData flag element that is present but empty (Excel writes &lt;x:MoveWithCells/&gt;) means True.
+        /// </summary>
+        private static ST_TrueFalseBlank ReadTrueFalseBlankElement(XmlNode childNode)
+        {
+            string value = childNode.InnerText == null ? string.Empty : childNode.InnerText.Trim();
+            if (value.Length == 0)
+                return ST_TrueFalseBlank.@true;
+            return NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(value);
         }
 
 
@@ -203,31 +258,75 @@ namespace NPOI.OpenXmlFormats.Vml.Spreadsheet
             sw.Write(string.Format("<x:{0}", nodeName));
             XmlHelper.WriteAttribute(sw, "ObjectType", this.ObjectType.ToString());
             sw.Write(">");
-            if (this.moveWithCells == ST_TrueFalseBlank.t || this.moveWithCells == ST_TrueFalseBlank.@true)
-                sw.Write(string.Format("<x:MoveWithCells/>", this.moveWithCells));
-            if (this.sizeWithCells == ST_TrueFalseBlank.t || this.sizeWithCells == ST_TrueFalseBlank.@true)
-                sw.Write(string.Format("<x:SizeWithCells/>", this.sizeWithCells));
-            if (this.anchor != null)
-                sw.Write(string.Format("<x:Anchor>{0}</x:Anchor>", this.anchor));
-            if (this.autoFill != ST_TrueFalseBlank.NONE)
-                sw.Write(string.Format("<x:AutoFill>{0}</x:AutoFill>", this.autoFill));
-            if (this.visible != ST_TrueFalseBlank.NONE)
-                sw.Write(string.Format("<x:Visible>{0}</x:Visible>", this.visible));
-            if (this.row != null)
+            // keep the source element order so a load/save round-trip does not reshuffle the element
+            List<string> written = new List<string>();
+            if (this.sourceOrder != null)
             {
-                foreach (Int32 x in this.row)
+                foreach (string entry in this.sourceOrder)
                 {
-                    sw.Write(string.Format("<x:Row>{0}</x:Row>", x));
+                    if (entry.StartsWith(UnknownElementPrefix, StringComparison.Ordinal))
+                        sw.Write(entry.Substring(UnknownElementPrefix.Length));
+                    else if (!written.Contains(entry))
+                    {
+                        WriteModelledElement(sw, entry);
+                        written.Add(entry);
+                    }
                 }
             }
-            if (this.column != null)
+            foreach (string name in DefaultOrder)
             {
-                foreach (Int32 x in this.column)
-                {
-                    sw.Write(string.Format("<x:Column>{0}</x:Column>", x));
-                }
+                if (!written.Contains(name))
+                    WriteModelledElement(sw, name);
             }
             sw.Write(string.Format("</x:{0}>", nodeName));
+        }
+
+        private void WriteModelledElement(StreamWriter sw, string name)
+        {
+            switch (name)
+            {
+                case "MoveWithCells":
+                    // an empty flag element means True; False is the default, so it is left out
+                    if (IsTrue(this.moveWithCells))
+                        sw.Write("<x:MoveWithCells/>");
+                    break;
+                case "SizeWithCells":
+                    if (IsTrue(this.sizeWithCells))
+                        sw.Write("<x:SizeWithCells/>");
+                    break;
+                case "Visible":
+                    // Excel writes <x:Visible/> for a shown comment and omits the element for a hidden one
+                    if (IsTrue(this.visible))
+                        sw.Write("<x:Visible/>");
+                    break;
+                case "Anchor":
+                    if (this.anchor != null)
+                        sw.Write(string.Format("<x:Anchor>{0}</x:Anchor>", this.anchor));
+                    break;
+                case "AutoFill":
+                    // AutoFill defaults to True, so an explicit False must be kept; written with Excel's casing
+                    if (this.autoFill != ST_TrueFalseBlank.NONE)
+                        sw.Write(string.Format("<x:AutoFill>{0}</x:AutoFill>", IsTrue(this.autoFill) ? "True" : "False"));
+                    break;
+                case "Row":
+                    if (this.row != null)
+                    {
+                        foreach (Int32 x in this.row)
+                        {
+                            sw.Write(string.Format("<x:Row>{0}</x:Row>", x));
+                        }
+                    }
+                    break;
+                case "Column":
+                    if (this.column != null)
+                    {
+                        foreach (Int32 x in this.column)
+                        {
+                            sw.Write(string.Format("<x:Column>{0}</x:Column>", x));
+                        }
+                    }
+                    break;
+            }
         }
 
 

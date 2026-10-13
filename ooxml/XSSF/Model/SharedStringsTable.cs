@@ -268,6 +268,20 @@ namespace NPOI.XSSF.Model
             }
         }
 
+        /// <summary>
+        /// Replaces the total count of string references, e.g. with a value recounted from the workbook's cells before saving.
+        /// </summary>
+        internal void SetCount(int value)
+        {
+            count = value;
+        }
+
+        /// <summary>
+        /// Shared string references written by an SXSSF streaming writer, which are not in the XSSFSheet model.
+        /// Set by SXSSFWorkbook only while it writes the workbook, and added to the recounted cell references.
+        /// </summary>
+        internal int StreamedReferenceCount { get; set; }
+
         /**
          * Returns an integer representing the total count of unique strings in the Shared String Table.
          * A string is unique even if it is a copy of another string, but has different formatting applied

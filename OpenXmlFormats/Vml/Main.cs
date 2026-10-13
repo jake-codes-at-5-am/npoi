@@ -79,6 +79,11 @@ namespace NPOI.OpenXmlFormats.Vml
 
         //private string id1Field;
 
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "id", "type", "on", "color", "opacity", "color2", "src", "size", "origin", "position", "aspect",
+            "colors", "angle", "alignshape", "focus", "focussize", "focusposition", "method", "recolor", "rotate" };
+
         public static CT_Fill Parse(XmlNode node, XmlNamespaceManager namespaceManager)
         {
             if (node == null)
@@ -88,7 +93,10 @@ namespace NPOI.OpenXmlFormats.Vml
             if (node.Attributes["type"] != null)
                 ctObj.type = (ST_FillType)Enum.Parse(typeof(ST_FillType), node.Attributes["type"].Value);
             if (node.Attributes["on"] != null)
+            {
                 ctObj.on = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["on"]);
+                ctObj.onSpecified = true;
+            }
             ctObj.color = XmlHelper.ReadString(node.Attributes["color"]);
             ctObj.opacity = XmlHelper.ReadString(node.Attributes["opacity"]);
             ctObj.color2 = XmlHelper.ReadString(node.Attributes["color2"]);
@@ -102,16 +110,27 @@ namespace NPOI.OpenXmlFormats.Vml
             if (node.Attributes["angle"] != null)
                 ctObj.angle = XmlHelper.ReadDecimal(node.Attributes["angle"]);
             if (node.Attributes["alignshape"] != null)
-                    ctObj.alignshape = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["alignshape"]);
+            {
+                ctObj.alignshape = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["alignshape"]);
+                ctObj.alignshapeSpecified = true;
+            }
             ctObj.focus = XmlHelper.ReadString(node.Attributes["focus"]);
             ctObj.focussize = XmlHelper.ReadString(node.Attributes["focussize"]);
             ctObj.focusposition = XmlHelper.ReadString(node.Attributes["focusposition"]);
             if (node.Attributes["method"] != null)
                 ctObj.method = (ST_FillMethod)Enum.Parse(typeof(ST_FillMethod), node.Attributes["method"].Value);
             if (node.Attributes["recolor"] != null)
+            {
                 ctObj.recolor = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["recolor"]);
+                ctObj.recolorSpecified = true;
+            }
             if (node.Attributes["rotate"] != null)
+            {
                 ctObj.rotate = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["rotate"]);
+                ctObj.rotateSpecified = true;
+            }
+            // e.g. o:detectmouseclick on form-control fills, or a nested o:fill extension element
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, new string[0]);
             return ctObj;
         }
 
@@ -121,8 +140,11 @@ namespace NPOI.OpenXmlFormats.Vml
         {
             sw.Write(string.Format("<v:{0}", nodeName));
             XmlHelper.WriteAttribute(sw, "id", this.id);
-            XmlHelper.WriteAttribute(sw, "type", this.type.ToString());
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "on", this.on);
+            // type, aspect and method are only written when present in the source or explicitly set;
+            // writing the enum defaults would change the meaning (VML's default method is "sigma", not "none")
+            if (this.typeSpecified)
+                XmlHelper.WriteAttribute(sw, "type", this.type.ToString());
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "on", this.on, false, this.onSpecified);
             XmlHelper.WriteAttribute(sw, "color", this.color);
             XmlHelper.WriteAttribute(sw, "opacity", this.opacity);
             XmlHelper.WriteAttribute(sw, "color2", this.color2);
@@ -130,17 +152,23 @@ namespace NPOI.OpenXmlFormats.Vml
             XmlHelper.WriteAttribute(sw, "size", this.size);
             XmlHelper.WriteAttribute(sw, "origin", this.origin);
             XmlHelper.WriteAttribute(sw, "position", this.position);
-            XmlHelper.WriteAttribute(sw, "aspect", this.aspect.ToString());
+            if (this.aspectSpecified)
+                XmlHelper.WriteAttribute(sw, "aspect", this.aspect.ToString());
             XmlHelper.WriteAttribute(sw, "colors", this.colors);
             XmlHelper.WriteAttribute(sw, "angle", (double)this.angle);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "alignshape", this.alignshape);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "alignshape", this.alignshape, false, this.alignshapeSpecified);
             XmlHelper.WriteAttribute(sw, "focus", this.focus);
             XmlHelper.WriteAttribute(sw, "focussize", this.focussize);
             XmlHelper.WriteAttribute(sw, "focusposition", this.focusposition);
-            XmlHelper.WriteAttribute(sw, "method", this.method.ToString());
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "recolor", this.recolor);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "rotate", this.rotate);
+            if (this.methodSpecified)
+                XmlHelper.WriteAttribute(sw, "method", this.method.ToString());
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "recolor", this.recolor, false, this.recolorSpecified);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "rotate", this.rotate, false, this.rotateSpecified);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write(">");
+            if (this.unknownContent != null)
+                this.unknownContent.WriteElements(sw);
             sw.Write(string.Format("</v:{0}>", nodeName));
         }
 
@@ -168,6 +196,7 @@ namespace NPOI.OpenXmlFormats.Vml
             set
             {
                 this.typeField = value;
+                this.typeFieldSpecified = true;
             }
         }
 
@@ -322,6 +351,7 @@ namespace NPOI.OpenXmlFormats.Vml
             set
             {
                 this.aspectField = value;
+                this.aspectFieldSpecified = true;
             }
         }
 
@@ -462,6 +492,7 @@ namespace NPOI.OpenXmlFormats.Vml
             set
             {
                 this.methodField = value;
+                this.methodFieldSpecified = true;
             }
         }
 
@@ -630,9 +661,16 @@ namespace NPOI.OpenXmlFormats.Vml
         private string idField;
         private string fillcolorField;
         private ST_InsetMode insetmodeField;
+        private bool insetmodeFieldSpecified;
 
         private ST_TrueFalse strokedField;
+        private bool strokedFieldSpecified;
         private string wrapcoordsField;
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "wrapcoords", "stroked", "o:spid", "id", "fillcolor", "o:insetmode", "type", "adj", "equationxml", "style" };
+        private static readonly string[] KnownElements = { "textdata", "anchorlock", "borderright", "borderleft", "borderbottom", "bordertop", "iscomment",
+            "stroke", "wrap", "textbox", "fill", "formulas", "handles", "imagedata", "lock", "shadow", "path", "textpath", "ClientData" };
 
         public static CT_Shape Parse(XmlNode node, XmlNamespaceManager namespaceManager)
         {
@@ -693,6 +731,7 @@ namespace NPOI.OpenXmlFormats.Vml
                 else if (childNode.LocalName == "ClientData")
                     ctObj.ClientData.Add(CT_ClientData.Parse(childNode, namespaceManager));
             }
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, KnownElements);
             return ctObj;
         }
 
@@ -706,11 +745,15 @@ namespace NPOI.OpenXmlFormats.Vml
             XmlHelper.WriteAttribute(sw, "type", this.type);
             XmlHelper.WriteAttribute(sw, "style", this.style);
             XmlHelper.WriteAttribute(sw, "fillcolor", this.fillcolor);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "stroked", this.stroked);
+            // VML defaults stroked to true, so an explicit stroked="f" must be kept
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "stroked", this.stroked, false, this.strokedFieldSpecified);
             XmlHelper.WriteAttribute(sw, "wrapcoords", this.wrapcoords);
-            XmlHelper.WriteAttribute(sw, "o:insetmode", this.insetmode.ToString());
+            if (this.insetmodeFieldSpecified)
+                XmlHelper.WriteAttribute(sw, "o:insetmode", this.insetmode.ToString());
             XmlHelper.WriteAttribute(sw, "adj", this.adj);
             XmlHelper.WriteAttribute(sw, "equationxml", this.equationxml);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write(">");
 
             if (this.iscomment != null)
@@ -749,6 +792,8 @@ namespace NPOI.OpenXmlFormats.Vml
                 this.borderbottom.Write(sw, "borderbottom");
             if (this.bordertop != null)
                 this.bordertop.Write(sw, "bordertop");
+            if (this.unknownContent != null)
+                this.unknownContent.WriteElements(sw);
             if (this.ClientData != null)
             {
                 foreach (CT_ClientData x in this.ClientData)
@@ -770,7 +815,11 @@ namespace NPOI.OpenXmlFormats.Vml
         public ST_TrueFalse stroked
         {
             get { return strokedField; }
-            set { strokedField = value; }
+            set
+            {
+                strokedField = value;
+                strokedFieldSpecified = true;
+            }
         }
 
 
@@ -808,7 +857,11 @@ namespace NPOI.OpenXmlFormats.Vml
         public ST_InsetMode insetmode
         {
             get { return insetmodeField; }
-            set { insetmodeField = value; }
+            set
+            {
+                insetmodeField = value;
+                insetmodeFieldSpecified = true;
+            }
         }
 
         public CT_Textbox AddNewTextbox()
@@ -1092,20 +1145,23 @@ namespace NPOI.OpenXmlFormats.Vml
             this.formulas = shape.formulas;
             this.handles = shape.handles;
             this.imagedata = shape.imagedata;
-            this.insetmode = shape.insetmode;
+            this.insetmodeField = shape.insetmodeField;
+            this.insetmodeFieldSpecified = shape.insetmodeFieldSpecified;
             this.iscomment = shape.iscomment;
             this.@lock = shape.@lock;
             this.path = shape.path;
             this.shadow = shape.shadow;
             this.spid = shape.spid;
             this.stroke = shape.stroke;
-            this.stroked = shape.stroked;
+            this.strokedField = shape.strokedField;
+            this.strokedFieldSpecified = shape.strokedFieldSpecified;
             this.style = shape.style;
             this.textbox = shape.textbox;
             this.textdata = shape.textdata;
             this.textpath = shape.textpath;
             this.wrap = shape.wrap;
             this.wrapcoords = shape.wrapcoords;
+            this.unknownContent = shape.unknownContent == null ? null : shape.unknownContent.Copy();
         }
 
         public CT_TextPath AddNewTextpath()
@@ -1564,14 +1620,24 @@ namespace NPOI.OpenXmlFormats.Vml
             ctObj.title = XmlHelper.ReadString(node.Attributes["o:title"]);
             ctObj.movie = XmlHelper.ReadString(node.Attributes["o:movie"]);
             ctObj.oleid = XmlHelper.ReadString(node.Attributes["o:oleid"]);
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
 
+        private VmlUnknownContent unknownContent;
 
+        private static readonly string[] KnownAttributes = { "id", "src", "cropleft", "croptop", "cropright", "cropbottom", "gain", "blacklevel", "gamma",
+            "grayscale", "bilevel", "chromakey", "embosscolor", "recolortarget", "pict", "r:href", "o:relid", "o:title", "o:movie", "o:oleid" };
+
+        private const string RelationshipsNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
         internal void Write(StreamWriter sw, string nodeName)
         {
             sw.Write(string.Format("<v:{0}", nodeName));
+            // the root <xml> element does not declare the r prefix, so r:href needs its own declaration
+            bool declaresRelationships = !string.IsNullOrEmpty(this.href);
+            if (declaresRelationships)
+                XmlHelper.WriteAttribute(sw, "xmlns:r", RelationshipsNamespace);
             XmlHelper.WriteAttribute(sw, "id", this.id);
             XmlHelper.WriteAttribute(sw, "src", this.src);
             XmlHelper.WriteAttribute(sw, "cropleft", this.cropleft);
@@ -1589,9 +1655,12 @@ namespace NPOI.OpenXmlFormats.Vml
             XmlHelper.WriteAttribute(sw, "pict", this.pict);
             XmlHelper.WriteAttribute(sw, "r:href", this.href);
             XmlHelper.WriteAttribute(sw, "o:relid", this.relid);
-            XmlHelper.WriteAttribute(sw, "o:title", this.title);
+            // Excel writes o:title="" on pictures; keep it when it was present, even if empty
+            XmlHelper.WriteAttribute(sw, "o:title", this.title, this.title != null);
             XmlHelper.WriteAttribute(sw, "o:movie", this.movie);
             XmlHelper.WriteAttribute(sw, "o:oleid", this.oleid);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw, declaresRelationships ? "r" : null);
             sw.Write("/>");
         }
 
@@ -1888,6 +1957,8 @@ namespace NPOI.OpenXmlFormats.Vml
 
         private ST_ConnectType connecttypeField;
 
+        private bool connecttypeFieldSpecified;
+
         private string connectlocsField;
 
         private bool connectlocsFieldSpecified;
@@ -1920,6 +1991,7 @@ namespace NPOI.OpenXmlFormats.Vml
             set
             {
                 this.connecttypeField = value;
+                this.connecttypeFieldSpecified = true;
             }
         }
         
@@ -2191,26 +2263,58 @@ namespace NPOI.OpenXmlFormats.Vml
             ctObj.v = XmlHelper.ReadString(node.Attributes["v"]);
             ctObj.limo = XmlHelper.ReadString(node.Attributes["limo"]);
             ctObj.textboxrect = XmlHelper.ReadString(node.Attributes["textboxrect"]);
+            // the *ok flags default to true in VML, so remember which ones were explicitly present
+            // to keep values such as shadowok="f" and o:extrusionok="f" on save
             if (node.Attributes["fillok"] != null)
+            {
                 ctObj.fillok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["fillok"]);
+                ctObj.fillokSpecified = true;
+            }
             if (node.Attributes["strokeok"] != null)
+            {
                 ctObj.strokeok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["strokeok"]);
+                ctObj.strokeokSpecified = true;
+            }
             if (node.Attributes["shadowok"] != null)
+            {
                 ctObj.shadowok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["shadowok"]);
+                ctObj.shadowokSpecified = true;
+            }
             if (node.Attributes["arrowok"] != null)
+            {
                 ctObj.arrowok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["arrowok"]);
+                ctObj.arrowokSpecified = true;
+            }
             if (node.Attributes["gradientshapeok"] != null)
+            {
                 ctObj.gradientshapeok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["gradientshapeok"]);
+                ctObj.gradientshapeokSpecified = true;
+            }
             if (node.Attributes["textpathok"] != null)
+            {
                 ctObj.textpathok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["textpathok"]);
+                ctObj.textpathokSpecified = true;
+            }
             if (node.Attributes["insetpenok"] != null)
+            {
                 ctObj.insetpenok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["insetpenok"]);
+                ctObj.insetpenokSpecified = true;
+            }
             ctObj.connectlocs = XmlHelper.ReadString(node.Attributes["connectlocs"]);
             ctObj.connectangles = XmlHelper.ReadString(node.Attributes["connectangles"]);
             if (node.Attributes["o:extrusionok"] != null)
+            {
                 ctObj.extrusionok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["o:extrusionok"]);
+                ctObj.extrusionokSpecified = true;
+            }
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
+
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "id", "o:connecttype", "v", "limo", "textboxrect", "fillok", "strokeok", "shadowok", "arrowok",
+            "gradientshapeok", "textpathok", "insetpenok", "connectlocs", "connectangles", "o:extrusionok" };
 
 
 
@@ -2218,20 +2322,23 @@ namespace NPOI.OpenXmlFormats.Vml
         {
             sw.Write(string.Format("<v:{0}", nodeName));
             XmlHelper.WriteAttribute(sw, "id", this.id);
-            XmlHelper.WriteAttribute(sw, "o:connecttype", this.connecttype.ToString());
+            if (this.connecttypeFieldSpecified)
+                XmlHelper.WriteAttribute(sw, "o:connecttype", this.connecttype.ToString());
             XmlHelper.WriteAttribute(sw, "v", this.v);
             XmlHelper.WriteAttribute(sw, "limo", this.limo);
             XmlHelper.WriteAttribute(sw, "textboxrect", this.textboxrect);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "fillok", this.fillok);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "strokeok", this.strokeok);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "shadowok", this.shadowok);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "arrowok", this.arrowok);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "gradientshapeok", this.gradientshapeok);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "textpathok", this.textpathok);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "insetpenok", this.insetpenok);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "fillok", this.fillok, false, this.fillokSpecified);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "strokeok", this.strokeok, false, this.strokeokSpecified);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "shadowok", this.shadowok, false, this.shadowokSpecified);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "arrowok", this.arrowok, false, this.arrowokSpecified);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "gradientshapeok", this.gradientshapeok, false, this.gradientshapeokSpecified);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "textpathok", this.textpathok, false, this.textpathokSpecified);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "insetpenok", this.insetpenok, false, this.insetpenokSpecified);
             XmlHelper.WriteAttribute(sw, "connectlocs", this.connectlocs);
             XmlHelper.WriteAttribute(sw, "connectangles", this.connectangles);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "o:extrusionok", this.extrusionok, false);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "o:extrusionok", this.extrusionok, false, this.extrusionokSpecified);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write(">");
             sw.Write(string.Format("</v:{0}>", nodeName));
         }
@@ -2292,8 +2399,13 @@ namespace NPOI.OpenXmlFormats.Vml
             ctObj.offset2 = XmlHelper.ReadString(node.Attributes["offset2"]);
             ctObj.origin = XmlHelper.ReadString(node.Attributes["origin"]);
             ctObj.matrix = XmlHelper.ReadString(node.Attributes["matrix"]);
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
+
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "id", "on", "type", "obscured", "color", "opacity", "offset", "color2", "offset2", "origin", "matrix" };
 
 
 
@@ -2311,6 +2423,8 @@ namespace NPOI.OpenXmlFormats.Vml
             XmlHelper.WriteAttribute(sw, "offset2", this.offset2);
             XmlHelper.WriteAttribute(sw, "origin", this.origin);
             XmlHelper.WriteAttribute(sw, "matrix", this.matrix);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write(">");
             sw.Write(string.Format("</v:{0}>", nodeName));
         }
@@ -2711,8 +2825,15 @@ namespace NPOI.OpenXmlFormats.Vml
             }
             if (node.Attributes["insetpen"] != null)
                 ctObj.insetpen = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["insetpen"]);
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
+
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "id", "on", "weight", "color", "opacity", "linestyle", "miterlimit", "joinstyle", "endcap",
+            "dashstyle", "filltype", "src", "imageaspect", "imagesize", "imagealignshape", "color2", "startarrow", "startarrowwidth",
+            "startarrowlength", "endarrow", "endarrowwidth", "endarrowlength", "insetpen" };
 
 
 
@@ -2755,6 +2876,8 @@ namespace NPOI.OpenXmlFormats.Vml
             if(endarrowlengthFieldSpecified)
                 XmlHelper.WriteAttribute(sw, "endarrowlength", this.endarrowlength.ToString());
             NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "insetpen", this.insetpen);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write("/>");
         }
 
@@ -3371,10 +3494,14 @@ namespace NPOI.OpenXmlFormats.Vml
             ctObj.style = XmlHelper.ReadString(node.Attributes["style"]);
             ctObj.inset = XmlHelper.ReadString(node.Attributes["inset"]);
             ctObj.ItemXml = node.InnerXml;
+            // e.g. o:singleclick on form-control text boxes
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
 
+        private VmlUnknownContent unknownContent;
 
+        private static readonly string[] KnownAttributes = { "id", "style", "inset" };
 
         internal void Write(StreamWriter sw, string nodeName)
         {
@@ -3382,6 +3509,8 @@ namespace NPOI.OpenXmlFormats.Vml
             XmlHelper.WriteAttribute(sw, "id", this.id);
             XmlHelper.WriteAttribute(sw, "style", this.style);
             XmlHelper.WriteAttribute(sw, "inset", this.inset);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write(">");
             if (this.ItemXml != null)
                 sw.Write(this.ItemXml);
@@ -3724,6 +3853,12 @@ namespace NPOI.OpenXmlFormats.Vml
         private ST_TrueFalse filledField = ST_TrueFalse.t;
         private ST_TrueFalse strokedField = ST_TrueFalse.t;
         private ST_TrueFalse preferrelativeField;
+        private bool preferrelativeFieldSpecified;
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "id", "stroked", "filled", "o:preferrelative", "coordsize", "o:spt", "adj", "path" };
+        private static readonly string[] KnownElements = { "stroke", "path", "lock", "formulas", "handles", "fill", "shadow", "textbox", "textpath",
+            "imagedata", "wrap", "anchorlock", "bordertop", "borderbottom", "borderleft", "borderright", "ClientData", "textdata" };
         //private string styleField;
         private float sptField;
         private string coordsizeField;
@@ -3747,10 +3882,17 @@ namespace NPOI.OpenXmlFormats.Vml
             if (node.Attributes["filled"] != null)
                 ctObj.filled = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["filled"]);
             if (node.Attributes["o:preferrelative"] != null)
+            {
                 ctObj.preferrelative = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["o:preferrelative"]);
+                ctObj.preferrelativeFieldSpecified = true;
+            }
             ctObj.coordsize = XmlHelper.ReadString(node.Attributes["coordsize"]);
-            if (node.Attributes["o:spt"] != null)
-                ctObj.id = XmlHelper.ReadString(node.Attributes["o:spt"]);
+            // shape references (<v:shape type="#_x0000_t202">) resolve against this id, so it must survive a round-trip
+            ctObj.id = XmlHelper.ReadString(node.Attributes["id"]);
+            float spt;
+            if (node.Attributes["o:spt"] != null
+                && float.TryParse(node.Attributes["o:spt"].Value, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out spt))
+                ctObj.spt = spt;
             ctObj.adj = XmlHelper.ReadString(node.Attributes["adj"]);
             ctObj.path2 = XmlHelper.ReadString(node.Attributes["path"]);
             ctObj.formulas = new List<CT_Formulas>();
@@ -3807,6 +3949,7 @@ namespace NPOI.OpenXmlFormats.Vml
                 else if (childNode.LocalName == "textdata")
                     ctObj.textdata.Add(CT_Rel.Parse(childNode, namespaceManager));
             }
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, KnownElements);
             return ctObj;
         }
 
@@ -3815,17 +3958,27 @@ namespace NPOI.OpenXmlFormats.Vml
         public void Write(StreamWriter sw, string nodeName)
         {
             sw.Write(string.Format("<v:{0}", nodeName));
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "stroked", this.stroked, true);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "filled", this.filled, true);
-            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "o:preferrelative", this.preferrelative);
+            XmlHelper.WriteAttribute(sw, "id", this.id);
             XmlHelper.WriteAttribute(sw, "coordsize", this.coordsize);
             XmlHelper.WriteAttribute(sw, "o:spt", this.spt);
-            XmlHelper.WriteAttribute(sw, "id", this.id);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "o:preferrelative", this.preferrelative, false, this.preferrelativeFieldSpecified);
             XmlHelper.WriteAttribute(sw, "adj", this.adj);
             XmlHelper.WriteAttribute(sw, "path", this.path2);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "filled", this.filled, true);
+            NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "stroked", this.stroked, true);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write(">");
             if (this.stroke != null)
                 this.stroke.Write(sw, "stroke");
+            // formulas precede path, matching the order Excel writes (e.g. the _x0000_t75 picture shapetype)
+            if (this.formulas != null)
+            {
+                foreach (CT_Formulas x in this.formulas)
+                {
+                    x.Write(sw, "formulas");
+                }
+            }
             if (this.path != null)
                 this.path.Write(sw, "path");
             if (this.textpath != null)
@@ -3833,13 +3986,6 @@ namespace NPOI.OpenXmlFormats.Vml
                 foreach (CT_TextPath x in this.textpath)
                 {
                     x.Write(sw, "textpath");
-                }
-            }
-            if (this.formulas != null)
-            {
-                foreach (CT_Formulas x in this.formulas)
-                {
-                    x.Write(sw, "formulas");
                 }
             }
             if (this.handles != null)
@@ -3935,6 +4081,8 @@ namespace NPOI.OpenXmlFormats.Vml
                     x.Write(sw, "textdata");
                 }
             }
+            if (this.unknownContent != null)
+                this.unknownContent.WriteElements(sw);
             sw.Write(string.Format("</v:{0}>", nodeName));
         }
 
@@ -6532,5 +6680,120 @@ namespace NPOI.OpenXmlFormats.Vml
         view,
         edit,
         backwardCompatible,
+    }
+
+    /// <summary>
+    /// Holds the VML attributes and child elements that a typed CT_* class does not model, so that a
+    /// load/save round-trip writes them back unchanged instead of silently dropping them
+    /// (e.g. o:button, strokecolor, filled on v:shape, or FmlaMacro, Checked, FmlaLink in x:ClientData).
+    /// </summary>
+    internal sealed class VmlUnknownContent
+    {
+        // namespaces declared on the root xml element by XSSFVMLDrawing.Write
+        private static readonly Dictionary<string, string> RootNamespaces = new Dictionary<string, string>
+        {
+            { "v", "urn:schemas-microsoft-com:vml" },
+            { "o", "urn:schemas-microsoft-com:office:office" },
+            { "x", "urn:schemas-microsoft-com:office:excel" },
+            { "w", "urn:schemas-microsoft-com:office:word" },
+            { "p", "urn:schemas-microsoft-com:office:powerpoint" },
+        };
+
+        private sealed class UnknownAttribute
+        {
+            public string Name;
+            public string Prefix;
+            public string NamespaceUri;
+            public string Value;
+        }
+
+        private readonly List<UnknownAttribute> attributes = new List<UnknownAttribute>();
+        private readonly List<string> elements = new List<string>();
+
+        /// <summary>
+        /// Captures the attributes of <paramref name="node"/> whose qualified name is not in
+        /// <paramref name="knownAttributes"/>, and the child elements whose local name is not in
+        /// <paramref name="knownElements"/> (pass null to skip either). Returns null when there is nothing to keep.
+        /// </summary>
+        public static VmlUnknownContent Read(XmlNode node, ICollection<string> knownAttributes, ICollection<string> knownElements)
+        {
+            VmlUnknownContent content = new VmlUnknownContent();
+            if (knownAttributes != null && node.Attributes != null)
+            {
+                foreach (XmlAttribute attr in node.Attributes)
+                {
+                    if (attr.Prefix == "xmlns" || attr.Name == "xmlns" || knownAttributes.Contains(attr.Name))
+                        continue;
+                    content.attributes.Add(new UnknownAttribute
+                    {
+                        Name = attr.Name,
+                        Prefix = attr.Prefix,
+                        NamespaceUri = attr.NamespaceURI,
+                        Value = attr.Value
+                    });
+                }
+            }
+            if (knownElements != null)
+            {
+                foreach (XmlNode child in node.ChildNodes)
+                {
+                    if (child.NodeType != XmlNodeType.Element || knownElements.Contains(child.LocalName))
+                        continue;
+                    content.elements.Add(StripRootNamespaceDeclarations(child.OuterXml));
+                }
+            }
+            return content.attributes.Count > 0 || content.elements.Count > 0 ? content : null;
+        }
+
+        /// <param name="alreadyDeclaredPrefix">a non-root prefix the caller has already declared on this element, or null</param>
+        public void WriteAttributes(StreamWriter sw, string alreadyDeclaredPrefix = null)
+        {
+            List<string> declaredPrefixes = null;
+            if (alreadyDeclaredPrefix != null)
+                declaredPrefixes = new List<string> { alreadyDeclaredPrefix };
+            foreach (UnknownAttribute attr in attributes)
+            {
+                // an attribute from a namespace the root element does not declare needs its own declaration
+                if (!string.IsNullOrEmpty(attr.Prefix) && !RootNamespaces.ContainsKey(attr.Prefix))
+                {
+                    if (declaredPrefixes == null)
+                        declaredPrefixes = new List<string>();
+                    if (!declaredPrefixes.Contains(attr.Prefix))
+                    {
+                        declaredPrefixes.Add(attr.Prefix);
+                        XmlHelper.WriteAttribute(sw, "xmlns:" + attr.Prefix, attr.NamespaceUri, true);
+                    }
+                }
+                XmlHelper.WriteAttribute(sw, attr.Name, attr.Value, true);
+            }
+        }
+
+        public void WriteElements(StreamWriter sw)
+        {
+            foreach (string element in elements)
+            {
+                sw.Write(element);
+            }
+        }
+
+        public VmlUnknownContent Copy()
+        {
+            VmlUnknownContent copy = new VmlUnknownContent();
+            foreach (UnknownAttribute attr in attributes)
+            {
+                copy.attributes.Add(new UnknownAttribute { Name = attr.Name, Prefix = attr.Prefix, NamespaceUri = attr.NamespaceUri, Value = attr.Value });
+            }
+            copy.elements.AddRange(elements);
+            return copy;
+        }
+
+        private static string StripRootNamespaceDeclarations(string xml)
+        {
+            foreach (KeyValuePair<string, string> ns in RootNamespaces)
+            {
+                xml = xml.Replace(" xmlns:" + ns.Key + "=\"" + ns.Value + "\"", string.Empty);
+            }
+            return xml;
+        }
     }
 }

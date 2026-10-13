@@ -124,6 +124,8 @@ namespace NPOI.XSSF.UserModel
              nsmgr.AddNamespace("x", "urn:schemas-microsoft-com:office:excel");
              nsmgr.AddNamespace("v", "urn:schemas-microsoft-com:vml");
              _items = new ArrayList();
+             // forget the comment shapetype of any previous content; it is re-detected below
+             _shapeTypeId = null;
             XmlNodeList nodes=doc.SelectNodes("/xml/*",nsmgr);
             foreach (XmlNode nd in nodes)
             {
@@ -137,18 +139,17 @@ namespace NPOI.XSSF.UserModel
                 {
                     CT_Shapetype st = CT_Shapetype.Parse(nd, nsmgr);
                     _items.Add(st);
-                    _shapeTypeId = st.id;
+                    // new comments must reference the comment (text box, spt 202) shapetype,
+                    // not whichever shapetype happens to come last (e.g. a form button's _x0000_t201)
+                    if (IsCommentShapetype(st))
+                        _shapeTypeId = st.id;
                 }
                 else if (nd.LocalName == QNAME_SHAPE.Name)
                 {
                     CT_Shape shape = CT_Shape.Parse(nd, nsmgr);
-                    String id = shape.id;
-                    if (id != null)
-                    {
-                        MatchCollection m = ptrn_shapeId.Matches(id);
-                        if (m.Count>0) 
-                            _shapeId = Math.Max(_shapeId, int.Parse(m[0].Groups[1].Value));
-                    }
+                    // header/footer pictures use id="LH" etc. and carry the numeric id in o:spid
+                    TrackShapeId(shape.id);
+                    TrackShapeId(shape.spid);
                     _items.Add(shape);
                 }
                 else
@@ -169,6 +170,22 @@ namespace NPOI.XSSF.UserModel
                 }
 
             }
+        }
+
+        private static bool IsCommentShapetype(CT_Shapetype st)
+        {
+            if (string.IsNullOrEmpty(st.id))
+                return false;
+            return st.spt == 202 || st.id == COMMENT_SHAPE_TYPE_ID;
+        }
+
+        private void TrackShapeId(string id)
+        {
+            if (id == null)
+                return;
+            MatchCollection m = ptrn_shapeId.Matches(id);
+            if (m.Count > 0)
+                _shapeId = Math.Max(_shapeId, int.Parse(m[0].Groups[1].Value));
         }
 
         internal ArrayList GetItems()
@@ -239,6 +256,11 @@ namespace NPOI.XSSF.UserModel
             idmap.data = ("1");
             _items.Add(layout);
 
+            _items.Add(NewCommentShapetype());
+        }
+
+        private CT_Shapetype NewCommentShapetype()
+        {
             CT_Shapetype shapetype = new CT_Shapetype();
             _shapeTypeId = COMMENT_SHAPE_TYPE_ID;
             shapetype.id = _shapeTypeId;// "_x0000_t" + _shapeTypeId;
@@ -250,11 +272,21 @@ namespace NPOI.XSSF.UserModel
             CT_Path path = shapetype.AddNewPath();
             path.gradientshapeok = NPOI.OpenXmlFormats.Vml.ST_TrueFalse.t;
             path.connecttype=(ST_ConnectType.rect);
-            _items.Add(shapetype);
+            return shapetype;
         }
 
         internal CT_Shape newCommentShape()
         {
+            // a loaded drawing may hold only form controls or pictures; comments need their own shapetype
+            if (string.IsNullOrEmpty(_shapeTypeId))
+            {
+                CT_Shapetype shapetype = NewCommentShapetype();
+                int firstShape = 0;
+                while (firstShape < _items.Count && !(_items[firstShape] is CT_Shape))
+                    firstShape++;
+                _items.Insert(firstShape, shapetype);
+            }
+
             CT_Shape shape = new CT_Shape();
 
             shape.id = "_x0000_s" + (++_shapeId);
