@@ -181,19 +181,37 @@ namespace NPOI.OpenXmlFormats.Vml.Spreadsheet
                 if (childNode.LocalName == "Anchor")
                     ctObj.anchor = childNode.InnerText;
                 else if (childNode.LocalName == "AutoFill")
-                    ctObj.autoFill = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(childNode.InnerText);
+                    ctObj.autoFill = ReadTrueFalseBlankElement(childNode);
                 else if (childNode.LocalName == "Visible")
-                    ctObj.visible = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(childNode.InnerText);
+                    ctObj.visible = ReadTrueFalseBlankElement(childNode);
                 else if (childNode.LocalName == "MoveWithCells")
-                    ctObj.moveWithCells = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(childNode.InnerText);
+                    ctObj.moveWithCells = ReadTrueFalseBlankElement(childNode);
                 else if (childNode.LocalName == "SizeWithCells")
-                    ctObj.sizeWithCells = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(childNode.InnerText);
+                    ctObj.sizeWithCells = ReadTrueFalseBlankElement(childNode);
                 else if (childNode.LocalName == "Column")
                     ctObj.column.Add(Int32.Parse(childNode.InnerText));
                 else if (childNode.LocalName == "Row")
                     ctObj.row.Add(Int32.Parse(childNode.InnerText));
             }
+            // everything not modelled above (FmlaMacro, Checked, FmlaLink, FmlaRange, DropStyle, Locked,
+            // PrintObject, TextHAlign, ...) is kept verbatim so form controls and macro buttons survive a save
+            ctObj.unknownContent = NPOI.OpenXmlFormats.Vml.VmlUnknownContent.Read(node, null, KnownElements);
             return ctObj;
+        }
+
+        private NPOI.OpenXmlFormats.Vml.VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownElements = { "Anchor", "AutoFill", "Visible", "MoveWithCells", "SizeWithCells", "Column", "Row" };
+
+        /// <summary>
+        /// An x:ClientData flag element that is present but empty (Excel writes &lt;x:MoveWithCells/&gt;) means True.
+        /// </summary>
+        private static ST_TrueFalseBlank ReadTrueFalseBlankElement(XmlNode childNode)
+        {
+            string value = childNode.InnerText == null ? string.Empty : childNode.InnerText.Trim();
+            if (value.Length == 0)
+                return ST_TrueFalseBlank.@true;
+            return NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalseBlank(value);
         }
 
 
@@ -211,6 +229,8 @@ namespace NPOI.OpenXmlFormats.Vml.Spreadsheet
                 sw.Write(string.Format("<x:Anchor>{0}</x:Anchor>", this.anchor));
             if (this.autoFill != ST_TrueFalseBlank.NONE)
                 sw.Write(string.Format("<x:AutoFill>{0}</x:AutoFill>", this.autoFill));
+            if (this.unknownContent != null)
+                this.unknownContent.WriteElements(sw);
             if (this.visible != ST_TrueFalseBlank.NONE)
                 sw.Write(string.Format("<x:Visible>{0}</x:Visible>", this.visible));
             if (this.row != null)

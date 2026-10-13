@@ -1937,6 +1937,19 @@ namespace NPOI.XSSF.UserModel
         {
             return worksheet;
         }
+
+        /// <summary>
+        /// Number of cells in this sheet that reference the shared string table (t="s").
+        /// </summary>
+        internal int CountSharedStringCells()
+        {
+            int count = 0;
+            foreach (XSSFRow row in _rows.Values)
+            {
+                count += row.CountSharedStringCells();
+            }
+            return count;
+        }
         
         public ColumnHelper GetColumnHelper()
         {

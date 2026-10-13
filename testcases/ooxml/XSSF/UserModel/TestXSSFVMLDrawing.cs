@@ -22,6 +22,8 @@ using NUnit.Framework;
 using System;
 using System.Collections;
 using System.IO;
+using System.Text;
+using System.Xml;
 
 namespace TestCases.XSSF.UserModel
 {
@@ -206,6 +208,220 @@ namespace TestCases.XSSF.UserModel
                     Assert.AreEqual(NPOI.OpenXmlFormats.Vml.ST_TrueFalse.t, shapetype.filled);
                 }
             }
+        }
+
+        private const string VmlHeader =
+            "<xml xmlns:v=\"urn:schemas-microsoft-com:vml\" xmlns:o=\"urn:schemas-microsoft-com:office:office\" xmlns:x=\"urn:schemas-microsoft-com:office:excel\">"
+            + "<o:shapelayout v:ext=\"edit\"><o:idmap v:ext=\"edit\" data=\"1\"/></o:shapelayout>";
+
+        private const string CommentShapetype =
+            "<v:shapetype id=\"_x0000_t202\" coordsize=\"21600,21600\" o:spt=\"202\" path=\"m,l,21600r21600,l21600,xe\">"
+            + "<v:stroke joinstyle=\"miter\"/><v:path gradientshapeok=\"t\" o:connecttype=\"rect\"/></v:shapetype>";
+
+        private const string ButtonShapetype =
+            "<v:shapetype id=\"_x0000_t201\" coordsize=\"21600,21600\" o:spt=\"201\" path=\"m,l,21600r21600,l21600,xe\">"
+            + "<v:stroke joinstyle=\"miter\"/>"
+            + "<v:path shadowok=\"f\" o:extrusionok=\"f\" strokeok=\"f\" fillok=\"f\" o:connecttype=\"rect\"/>"
+            + "<o:lock v:ext=\"edit\" shapetype=\"t\"/></v:shapetype>";
+
+        private static XmlDocument RoundTrip(string vmlXml, out XSSFVMLDrawing vml, out XmlNamespaceManager nsmgr)
+        {
+            vml = new XSSFVMLDrawing();
+            vml.Read(new MemoryStream(Encoding.UTF8.GetBytes(vmlXml)));
+            return Write(vml, out nsmgr);
+        }
+
+        private static XmlDocument Write(XSSFVMLDrawing vml, out XmlNamespaceManager nsmgr)
+        {
+            MemoryStream out1 = new MemoryStream();
+            vml.Write(out1);
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(Encoding.UTF8.GetString(out1.ToArray()));
+            nsmgr = new XmlNamespaceManager(doc.NameTable);
+            nsmgr.AddNamespace("v", "urn:schemas-microsoft-com:vml");
+            nsmgr.AddNamespace("o", "urn:schemas-microsoft-com:office:office");
+            nsmgr.AddNamespace("x", "urn:schemas-microsoft-com:office:excel");
+            return doc;
+        }
+
+        private static void AssertEveryShapeTypeResolves(XmlDocument doc, XmlNamespaceManager nsmgr)
+        {
+            foreach (XmlElement shape in doc.SelectNodes("//v:shape[@type]", nsmgr))
+            {
+                string typeId = shape.GetAttribute("type").TrimStart('#');
+                Assert.IsNotNull(doc.SelectSingleNode("//v:shapetype[@id='" + typeId + "']", nsmgr),
+                    "shape " + shape.GetAttribute("id") + " references undefined shapetype " + typeId);
+            }
+        }
+
+        [Test]
+        public void TestShapetypeIdAndSptSurviveRoundTrip()
+        {
+            // XL-264: the shapetype id was replaced by the o:spt value and o:spt itself was dropped,
+            // leaving every comment's type="#_x0000_t202" reference dangling
+            string xml = VmlHeader + CommentShapetype
+                + "<v:shape id=\"_x0000_s1025\" type=\"#_x0000_t202\" style=\"visibility:hidden\" fillcolor=\"#ffffe1\" o:insetmode=\"auto\">"
+                + "<v:textbox style=\"mso-direction-alt:auto\"><div style=\"text-align:left\"></div></v:textbox>"
+                + "<x:ClientData ObjectType=\"Note\"><x:Anchor>1, 15, 0, 2, 3, 15, 4, 4</x:Anchor><x:Row>0</x:Row><x:Column>0</x:Column></x:ClientData>"
+                + "</v:shape></xml>";
+
+            XSSFVMLDrawing vml;
+            XmlNamespaceManager nsmgr;
+            XmlDocument doc = RoundTrip(xml, out vml, out nsmgr);
+
+            CT_Shapetype shapetype = (CT_Shapetype)vml.GetItems()[1];
+            Assert.AreEqual("_x0000_t202", shapetype.id);
+            Assert.AreEqual(202.0f, shapetype.spt);
+
+            XmlElement written = (XmlElement)doc.SelectSingleNode("//v:shapetype", nsmgr);
+            Assert.AreEqual("_x0000_t202", written.GetAttribute("id"));
+            Assert.AreEqual("202", written.GetAttribute("spt", "urn:schemas-microsoft-com:office:office"));
+            AssertEveryShapeTypeResolves(doc, nsmgr);
+        }
+
+        [Test]
+        public void TestPictureShapetypeSurvivesRoundTrip()
+        {
+            string xml = VmlHeader
+                + "<v:shapetype id=\"_x0000_t75\" coordsize=\"21600,21600\" o:spt=\"75\" o:preferrelative=\"t\" path=\"m@4@5l@4@11@9@11@9@5xe\" filled=\"f\" stroked=\"f\">"
+                + "<v:stroke joinstyle=\"miter\"/><v:formulas><v:f eqn=\"if lineDrawn pixelLineWidth 0\"/></v:formulas>"
+                + "<v:path o:extrusionok=\"f\" gradientshapeok=\"t\" o:connecttype=\"rect\"/><o:lock v:ext=\"edit\" aspectratio=\"t\"/></v:shapetype>"
+                + "<v:shape id=\"LH\" o:spid=\"_x0000_s1025\" type=\"#_x0000_t75\" style=\"position:absolute;width:100pt;height:50pt\">"
+                + "<v:imagedata o:relid=\"rId1\" o:title=\"logo\"/><o:lock v:ext=\"edit\" rotation=\"t\"/></v:shape></xml>";
+
+            XSSFVMLDrawing vml;
+            XmlNamespaceManager nsmgr;
+            XmlDocument doc = RoundTrip(xml, out vml, out nsmgr);
+
+            XmlElement shapetype = (XmlElement)doc.SelectSingleNode("//v:shapetype", nsmgr);
+            Assert.AreEqual("_x0000_t75", shapetype.GetAttribute("id"));
+            Assert.AreEqual("75", shapetype.GetAttribute("spt", "urn:schemas-microsoft-com:office:office"));
+            Assert.AreEqual("f", shapetype.GetAttribute("filled"));
+            Assert.AreEqual("f", shapetype.GetAttribute("stroked"));
+            Assert.AreEqual("f", ((XmlElement)shapetype.SelectSingleNode("v:path", nsmgr)).GetAttribute("extrusionok", "urn:schemas-microsoft-com:office:office"));
+            // Excel writes formulas before path
+            Assert.AreEqual("formulas", shapetype.ChildNodes[1].LocalName);
+            Assert.AreEqual("path", shapetype.ChildNodes[2].LocalName);
+
+            XmlElement shape = (XmlElement)doc.SelectSingleNode("//v:shape", nsmgr);
+            Assert.IsFalse(shape.HasAttribute("insetmode", "urn:schemas-microsoft-com:office:office"), "o:insetmode must not be invented");
+            AssertEveryShapeTypeResolves(doc, nsmgr);
+        }
+
+        [Test]
+        public void TestFormControlsSurviveRoundTrip()
+        {
+            string xml = VmlHeader + ButtonShapetype
+                + "<v:shape id=\"_x0000_s1026\" type=\"#_x0000_t201\" style=\"position:absolute\" o:button=\"t\" fillcolor=\"buttonFace [67]\" strokecolor=\"windowText [64]\" o:insetmode=\"auto\">"
+                + "<v:fill color2=\"buttonFace [67]\" o:detectmouseclick=\"t\"/>"
+                + "<o:lock v:ext=\"edit\" rotation=\"t\"/>"
+                + "<v:textbox style=\"mso-direction-alt:auto\" o:singleclick=\"f\"><div style=\"text-align:center\">Run</div></v:textbox>"
+                + "<x:ClientData ObjectType=\"Button\"><x:Anchor>5, 0, 1, 0, 6, 32, 2, 12</x:Anchor><x:PrintObject>False</x:PrintObject>"
+                + "<x:AutoFill>False</x:AutoFill><x:FmlaMacro>[0]!RunMe</x:FmlaMacro><x:TextHAlign>Center</x:TextHAlign></x:ClientData>"
+                + "</v:shape>"
+                + "<v:shape id=\"_x0000_s1027\" type=\"#_x0000_t201\" style=\"position:absolute\" filled=\"f\" fillcolor=\"window [65]\" stroked=\"f\" strokecolor=\"windowText [64]\" o:insetmode=\"auto\">"
+                + "<x:ClientData ObjectType=\"Checkbox\"><x:Anchor>5, 0, 3, 0, 6, 32, 4, 4</x:Anchor><x:FmlaLink>$H$1</x:FmlaLink><x:Checked>1</x:Checked><x:NoThreeD/></x:ClientData>"
+                + "</v:shape>"
+                + "<v:shape id=\"_x0000_s1028\" type=\"#_x0000_t201\" style=\"position:absolute\" stroked=\"f\" strokecolor=\"windowText [64]\" o:insetmode=\"auto\">"
+                + "<x:ClientData ObjectType=\"Drop\"><x:Anchor>5, 0, 5, 0, 6, 32, 6, 4</x:Anchor><x:FmlaRange>$J$1:$J$5</x:FmlaRange><x:Sel>2</x:Sel><x:DropStyle>Combo</x:DropStyle></x:ClientData>"
+                + "</v:shape></xml>";
+
+            XSSFVMLDrawing vml;
+            XmlNamespaceManager nsmgr;
+            XmlDocument doc = RoundTrip(xml, out vml, out nsmgr);
+            AssertEveryShapeTypeResolves(doc, nsmgr);
+
+            XmlElement path = (XmlElement)doc.SelectSingleNode("//v:shapetype/v:path", nsmgr);
+            Assert.AreEqual("f", path.GetAttribute("shadowok"));
+            Assert.AreEqual("f", path.GetAttribute("strokeok"));
+            Assert.AreEqual("f", path.GetAttribute("fillok"));
+            Assert.AreEqual("f", path.GetAttribute("extrusionok", "urn:schemas-microsoft-com:office:office"));
+
+            XmlElement button = (XmlElement)doc.SelectSingleNode("//v:shape[@id='_x0000_s1026']", nsmgr);
+            Assert.AreEqual("t", button.GetAttribute("button", "urn:schemas-microsoft-com:office:office"));
+            Assert.AreEqual("windowText [64]", button.GetAttribute("strokecolor"));
+            Assert.AreEqual("t", ((XmlElement)button.SelectSingleNode("v:fill", nsmgr)).GetAttribute("detectmouseclick", "urn:schemas-microsoft-com:office:office"));
+            Assert.AreEqual("f", ((XmlElement)button.SelectSingleNode("v:textbox", nsmgr)).GetAttribute("singleclick", "urn:schemas-microsoft-com:office:office"));
+            Assert.AreEqual("[0]!RunMe", button.SelectSingleNode("x:ClientData/x:FmlaMacro", nsmgr).InnerText);
+            Assert.AreEqual("False", button.SelectSingleNode("x:ClientData/x:PrintObject", nsmgr).InnerText);
+            Assert.AreEqual("Center", button.SelectSingleNode("x:ClientData/x:TextHAlign", nsmgr).InnerText);
+
+            XmlElement checkbox = (XmlElement)doc.SelectSingleNode("//v:shape[@id='_x0000_s1027']", nsmgr);
+            Assert.AreEqual("f", checkbox.GetAttribute("filled"));
+            Assert.AreEqual("f", checkbox.GetAttribute("stroked"));
+            Assert.AreEqual("$H$1", checkbox.SelectSingleNode("x:ClientData/x:FmlaLink", nsmgr).InnerText);
+            Assert.AreEqual("1", checkbox.SelectSingleNode("x:ClientData/x:Checked", nsmgr).InnerText);
+            Assert.IsNotNull(checkbox.SelectSingleNode("x:ClientData/x:NoThreeD", nsmgr));
+
+            XmlElement drop = (XmlElement)doc.SelectSingleNode("//v:shape[@id='_x0000_s1028']", nsmgr);
+            Assert.AreEqual("$J$1:$J$5", drop.SelectSingleNode("x:ClientData/x:FmlaRange", nsmgr).InnerText);
+            Assert.AreEqual("2", drop.SelectSingleNode("x:ClientData/x:Sel", nsmgr).InnerText);
+            Assert.AreEqual("Combo", drop.SelectSingleNode("x:ClientData/x:DropStyle", nsmgr).InnerText);
+
+            // a second round-trip is stable
+            XmlNamespaceManager nsmgr2;
+            XSSFVMLDrawing vml2;
+            XmlDocument doc2 = RoundTrip(doc.OuterXml, out vml2, out nsmgr2);
+            Assert.AreEqual(doc.OuterXml, doc2.OuterXml);
+        }
+
+        [Test]
+        public void TestEmptyClientDataFlagsMeanTrue()
+        {
+            // Excel writes <x:MoveWithCells/>; an empty ST_TrueFalseBlank element means True
+            string xml = VmlHeader + CommentShapetype
+                + "<v:shape id=\"_x0000_s1025\" type=\"#_x0000_t202\" style=\"visibility:hidden\">"
+                + "<x:ClientData ObjectType=\"Note\"><x:MoveWithCells/><x:SizeWithCells/><x:Anchor>1, 15, 0, 2, 3, 15, 4, 4</x:Anchor>"
+                + "<x:Row>0</x:Row><x:Column>0</x:Column><x:Visible/></x:ClientData></v:shape></xml>";
+
+            XSSFVMLDrawing vml;
+            XmlNamespaceManager nsmgr;
+            XmlDocument doc = RoundTrip(xml, out vml, out nsmgr);
+
+            CT_ClientData clientData = vml.FindCommentShape(0, 0).GetClientDataArray(0);
+            Assert.AreEqual(ST_TrueFalseBlank.@true, clientData.moveWithCells);
+            Assert.AreEqual(ST_TrueFalseBlank.@true, clientData.sizeWithCells);
+            Assert.AreEqual(ST_TrueFalseBlank.@true, clientData.visible);
+            Assert.IsNotNull(doc.SelectSingleNode("//x:ClientData/x:MoveWithCells", nsmgr));
+            Assert.IsNotNull(doc.SelectSingleNode("//x:ClientData/x:SizeWithCells", nsmgr));
+            Assert.IsNotNull(doc.SelectSingleNode("//x:ClientData/x:Visible", nsmgr));
+        }
+
+        [Test]
+        public void TestNewCommentInDrawingWithoutCommentShapetype()
+        {
+            // a drawing holding only a form button and a header picture: the new comment must not reuse the
+            // button's shapetype, must get a comment shapetype of its own, and must not reuse an o:spid
+            string xml = VmlHeader + ButtonShapetype
+                + "<v:shape id=\"_x0000_s1026\" type=\"#_x0000_t201\" style=\"position:absolute\" o:button=\"t\">"
+                + "<x:ClientData ObjectType=\"Button\"><x:Anchor>5, 0, 1, 0, 6, 32, 2, 12</x:Anchor><x:FmlaMacro>[0]!RunMe</x:FmlaMacro></x:ClientData></v:shape>"
+                + "<v:shape id=\"LH\" o:spid=\"_x0000_s1030\" type=\"#_x0000_t201\" style=\"position:absolute\"/>"
+                + "</xml>";
+
+            XSSFVMLDrawing vml = new XSSFVMLDrawing();
+            vml.Read(new MemoryStream(Encoding.UTF8.GetBytes(xml)));
+
+            CT_Shape comment = vml.newCommentShape();
+            Assert.AreEqual("#_x0000_t202", comment.type);
+            Assert.AreEqual("_x0000_s1031", comment.id);
+
+            XmlNamespaceManager nsmgr;
+            XmlDocument doc = Write(vml, out nsmgr);
+            XmlElement commentShapetype = (XmlElement)doc.SelectSingleNode("//v:shapetype[@id='_x0000_t202']", nsmgr);
+            Assert.IsNotNull(commentShapetype);
+            Assert.AreEqual("202", commentShapetype.GetAttribute("spt", "urn:schemas-microsoft-com:office:office"));
+            AssertEveryShapeTypeResolves(doc, nsmgr);
+        }
+
+        [Test]
+        public void TestNewCommentUsesCommentShapetypeWhenButtonShapetypeComesLast()
+        {
+            string xml = VmlHeader + CommentShapetype + ButtonShapetype + "</xml>";
+
+            XSSFVMLDrawing vml = new XSSFVMLDrawing();
+            vml.Read(new MemoryStream(Encoding.UTF8.GetBytes(xml)));
+
+            Assert.AreEqual("#_x0000_t202", vml.newCommentShape().type);
         }
     }
 }

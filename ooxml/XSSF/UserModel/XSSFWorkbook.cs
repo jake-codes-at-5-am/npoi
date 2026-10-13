@@ -1814,6 +1814,7 @@ namespace NPOI.XSSF.UserModel
         {
             SaveNamedRanges();
             SaveCalculationChain();
+            UpdateSharedStringCount();
 
             PackagePart part = GetPackagePart();
             doc.Save(part.GetOutputStream());
@@ -1849,6 +1850,27 @@ namespace NPOI.XSSF.UserModel
         public SharedStringsTable GetSharedStringSource()
         {
             return this.sharedStringSource;
+        }
+
+        /// <summary>
+        /// Recounts the sst count attribute (the total number of cells referencing the shared string table)
+        /// from the cells themselves. The running counter in <see cref="SharedStringsTable"/> starts from whatever
+        /// the source file declared (0 when the attribute is absent), only grows when strings are set through the
+        /// API and never shrinks when a string cell is overwritten, so on a load/edit/save it drifts from reality.
+        /// The SST part is committed after the workbook part (child parts save after their parent), so the recount lands before the table is written.
+        /// </summary>
+        private void UpdateSharedStringCount()
+        {
+            // when SXSSF streams rows into the table those cells never reach the XSSFSheet model, so keep its counter
+            if (sharedStringSource == null || sharedStringSource.IsCountMaintainedByStreamingWriter)
+                return;
+
+            int count = 0;
+            foreach (XSSFSheet sheet in sheets)
+            {
+                count += sheet.CountSharedStringCells();
+            }
+            sharedStringSource.SetCount(count);
         }
 
         /**

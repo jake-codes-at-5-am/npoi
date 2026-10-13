@@ -335,6 +335,11 @@ namespace NPOI.XSSF.Streaming
             {
                 _wb = workbook;
                 _sharedStringSource = useSharedStringsTable ? XssfWorkbook.GetSharedStringSource() : null;
+            }
+            if (_sharedStringSource != null)
+                _sharedStringSource.IsCountMaintainedByStreamingWriter = true;
+            if (workbook != null)
+            {
                 var numberOfSheets = XssfWorkbook.NumberOfSheets;
                 for (int i = 0; i < numberOfSheets; i++)
                 {

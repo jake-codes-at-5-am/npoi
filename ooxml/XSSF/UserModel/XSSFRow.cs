@@ -527,6 +527,21 @@ namespace NPOI.XSSF.UserModel
         }
 
         /// <summary>
+        /// Number of cells in this row that reference the shared string table (t="s").
+        /// </summary>
+        internal int CountSharedStringCells()
+        {
+            int count = 0;
+            foreach (ICell cell in _cells.Values)
+            {
+                XSSFCell xssfCell = cell as XSSFCell;
+                if (xssfCell != null && xssfCell.GetCTCell().t == ST_CellType.s)
+                    count++;
+            }
+            return count;
+        }
+
+        /// <summary>
         /// Fired when the document is written to an output stream.
         /// See <see cref="XSSFSheet.Write"/>
         /// </summary>

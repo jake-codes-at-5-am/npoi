@@ -147,6 +147,24 @@ namespace NPOI.OpenXmlFormats.Util
             else
                 NPOI.OpenXml4Net.Util.XmlHelper.WriteAttribute(sw, attributeName, "f");
         }
+        /// <summary>
+        /// Writes a VML true/false attribute. When <paramref name="specified"/> is true the value was
+        /// explicitly present in the source (or explicitly set), so it is always written, including "f";
+        /// otherwise the default-suppressing behaviour of the other overloads applies.
+        /// </summary>
+        public static void WriteAttribute(StreamWriter sw, string attributeName, NPOI.OpenXmlFormats.Vml.ST_TrueFalse value, bool defaultValue, bool specified)
+        {
+            if (!specified)
+            {
+                WriteAttribute(sw, attributeName, value, defaultValue);
+                return;
+            }
+
+            if (value == OpenXmlFormats.Vml.ST_TrueFalse.t || value == OpenXmlFormats.Vml.ST_TrueFalse.@true)
+                NPOI.OpenXml4Net.Util.XmlHelper.WriteAttribute(sw, attributeName, "t");
+            else
+                NPOI.OpenXml4Net.Util.XmlHelper.WriteAttribute(sw, attributeName, "f");
+        }
         public static void WriteAttribute(StreamWriter sw, string attributeName, ST_TrueFalseBlank value)
         {
             WriteAttribute(sw, attributeName, value, null);

@@ -111,6 +111,33 @@ namespace TestCases.XSSF.Model
             Assert.AreEqual("Second string", new XSSFRichTextString(sst.GetEntryAt(2)).ToString());
         }
         [Test]
+        public void TestCountRecalculatedOnSave()
+        {
+            // XL-264: the sst count attribute must equal the number of t="s" cells, not the running counter
+            // (which starts at the loaded value, only grows, and is 0 when the source omitted the attribute)
+            XSSFWorkbook wb = new XSSFWorkbook();
+            ISheet sheet = wb.CreateSheet("a");
+            IRow row = sheet.CreateRow(0);
+            row.CreateCell(0).SetCellValue("x");
+            row.CreateCell(1).SetCellValue("x");
+            row.CreateCell(2).SetCellValue("y");
+            wb.CreateSheet("b").CreateRow(3).CreateCell(4).SetCellValue("z");
+
+            wb = XSSFTestDataSamples.WriteOutAndReadBack(wb);
+            Assert.AreEqual(4, wb.GetSharedStringSource().Count);
+            Assert.AreEqual(3, wb.GetSharedStringSource().UniqueCount);
+
+            // overwrite a string with a number and another string with a new string: the running counter
+            // would now say 5, but only 3 cells reference the table
+            row = wb.GetSheet("a").GetRow(0);
+            row.GetCell(0).SetCellValue(42);
+            row.GetCell(1).SetCellValue("w");
+
+            wb = XSSFTestDataSamples.WriteOutAndReadBack(wb);
+            Assert.AreEqual(3, wb.GetSharedStringSource().Count);
+        }
+
+        [Test]
         public void TestReadWrite()
         {
             XSSFWorkbook wb = XSSFTestDataSamples.OpenSampleWorkbook("sample.xlsx");
