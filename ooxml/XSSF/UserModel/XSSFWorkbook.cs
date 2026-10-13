@@ -1861,11 +1861,11 @@ namespace NPOI.XSSF.UserModel
         /// </summary>
         private void UpdateSharedStringCount()
         {
-            // when SXSSF streams rows into the table those cells never reach the XSSFSheet model, so keep its counter
-            if (sharedStringSource == null || sharedStringSource.IsCountMaintainedByStreamingWriter)
+            if (sharedStringSource == null)
                 return;
 
-            int count = 0;
+            // rows streamed by SXSSF never reach the XSSFSheet model; SXSSFWorkbook supplies their count while it writes
+            int count = sharedStringSource.StreamedReferenceCount;
             foreach (XSSFSheet sheet in sheets)
             {
                 count += sheet.CountSharedStringCells();

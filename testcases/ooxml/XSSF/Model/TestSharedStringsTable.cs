@@ -25,6 +25,7 @@ using TestCases;
 using System.IO;
 using NPOI.XSSF.Model;
 using NPOI.XSSF;
+using NPOI.XSSF.Streaming;
 using NPOI;
 
 namespace TestCases.XSSF.Model
@@ -135,6 +136,90 @@ namespace TestCases.XSSF.Model
 
             wb = XSSFTestDataSamples.WriteOutAndReadBack(wb);
             Assert.AreEqual(3, wb.GetSharedStringSource().Count);
+        }
+
+        [Test]
+        public void TestCountIncludesStreamedCells()
+        {
+            // SXSSF rows never reach the XSSFSheet model, so the recount must add the streamed references
+            SXSSFWorkbook sxssf = new SXSSFWorkbook(null, 100, false, true);
+            try
+            {
+                ISheet sheet = sxssf.CreateSheet("streamed");
+                for (int r = 0; r < 250; r++)
+                {
+                    sheet.CreateRow(r).CreateCell(0).SetCellValue("s" + (r % 7));
+                }
+
+                XSSFWorkbook readBack = WriteAndReadBack(sxssf);
+                Assert.AreEqual(250, CountStringCells(readBack));
+                Assert.AreEqual(250, readBack.GetSharedStringSource().Count);
+                Assert.AreEqual(0, sxssf.XssfWorkbook.GetSharedStringSource().StreamedReferenceCount, "streamed count must only apply during the SXSSF write");
+            }
+            finally
+            {
+                sxssf.Dispose();
+            }
+        }
+
+        [Test]
+        public void TestCountForStreamingOverLoadedTemplate()
+        {
+            // a template's own string cells stay in the XSSF model and in the output, followed by the streamed rows
+            XSSFWorkbook template = new XSSFWorkbook();
+            ISheet templateSheet = template.CreateSheet("t");
+            for (int r = 0; r < 3; r++)
+            {
+                templateSheet.CreateRow(r).CreateCell(0).SetCellValue("template " + r);
+            }
+            template = XSSFTestDataSamples.WriteOutAndReadBack(template);
+
+            SXSSFWorkbook sxssf = new SXSSFWorkbook(template, 100, false, true);
+            try
+            {
+                ISheet sheet = sxssf.GetSheet("t");
+                for (int r = 10; r < 15; r++)
+                {
+                    sheet.CreateRow(r).CreateCell(0).SetCellValue("streamed " + r);
+                }
+                ISheet second = sxssf.CreateSheet("second");
+                for (int r = 0; r < 4; r++)
+                {
+                    second.CreateRow(r).CreateCell(1).SetCellValue("other");
+                }
+
+                XSSFWorkbook readBack = WriteAndReadBack(sxssf);
+                Assert.AreEqual(12, CountStringCells(readBack));
+                Assert.AreEqual(12, readBack.GetSharedStringSource().Count);
+            }
+            finally
+            {
+                sxssf.Dispose();
+            }
+        }
+
+        private static XSSFWorkbook WriteAndReadBack(SXSSFWorkbook wb)
+        {
+            MemoryStream out1 = new MemoryStream();
+            wb.Write(out1, true);
+            return new XSSFWorkbook(new MemoryStream(out1.ToArray()));
+        }
+
+        private static int CountStringCells(IWorkbook wb)
+        {
+            int count = 0;
+            for (int i = 0; i < wb.NumberOfSheets; i++)
+            {
+                foreach (IRow row in wb.GetSheetAt(i))
+                {
+                    foreach (ICell cell in row)
+                    {
+                        if (cell.CellType == CellType.String)
+                            count++;
+                    }
+                }
+            }
+            return count;
         }
 
         [Test]

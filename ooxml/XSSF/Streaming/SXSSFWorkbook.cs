@@ -336,8 +336,6 @@ namespace NPOI.XSSF.Streaming
                 _wb = workbook;
                 _sharedStringSource = useSharedStringsTable ? XssfWorkbook.GetSharedStringSource() : null;
             }
-            if (_sharedStringSource != null)
-                _sharedStringSource.IsCountMaintainedByStreamingWriter = true;
             if (workbook != null)
             {
                 var numberOfSheets = XssfWorkbook.NumberOfSheets;
@@ -450,6 +448,16 @@ namespace NPOI.XSSF.Streaming
                 if (sheetRef.Equals(sheet.GetPackagePart().PartName.Name.Substring(1))) return sheet;
             }
             return null;
+        }
+
+        private int CountStreamedSharedStringReferences()
+        {
+            int count = 0;
+            foreach (SXSSFSheet sxSheet in _sxFromXHash.Keys)
+            {
+                count += sxSheet.SheetDataWriter.SharedStringReferenceCount;
+            }
+            return count;
         }
 
         private void InjectData(FileInfo zipfile, Stream outStream, bool leaveOpen)
@@ -783,10 +791,16 @@ namespace NPOI.XSSF.Streaming
                 var os = new FileStream(tmplFile.FullName, FileMode.Open, FileAccess.ReadWrite);
                 try
                 {
+                    // streamed rows never reach the XSSFSheet model, so tell the shared strings recount
+                    // about their references for the duration of this write only
+                    if (_sharedStringSource != null)
+                        _sharedStringSource.StreamedReferenceCount = CountStreamedSharedStringReferences();
                     XssfWorkbook.Write(os);
                 }
                 finally
                 {
+                    if (_sharedStringSource != null)
+                        _sharedStringSource.StreamedReferenceCount = 0;
                     os.Close();
                 }
 

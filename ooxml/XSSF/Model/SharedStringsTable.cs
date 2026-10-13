@@ -277,10 +277,10 @@ namespace NPOI.XSSF.Model
         }
 
         /// <summary>
-        /// True when an SXSSF streaming writer adds its cells straight into this table; those cells are not in the
-        /// XSSFSheet model, so the workbook must not recount them and the running counter is kept instead.
+        /// Shared string references written by an SXSSF streaming writer, which are not in the XSSFSheet model.
+        /// Set by SXSSFWorkbook only while it writes the workbook, and added to the recounted cell references.
         /// </summary>
-        internal bool IsCountMaintainedByStreamingWriter { get; set; }
+        internal int StreamedReferenceCount { get; set; }
 
         /**
          * Returns an integer representing the total count of unique strings in the Shared String Table.

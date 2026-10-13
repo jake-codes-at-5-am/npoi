@@ -1620,14 +1620,24 @@ namespace NPOI.OpenXmlFormats.Vml
             ctObj.title = XmlHelper.ReadString(node.Attributes["o:title"]);
             ctObj.movie = XmlHelper.ReadString(node.Attributes["o:movie"]);
             ctObj.oleid = XmlHelper.ReadString(node.Attributes["o:oleid"]);
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
 
+        private VmlUnknownContent unknownContent;
 
+        private static readonly string[] KnownAttributes = { "id", "src", "cropleft", "croptop", "cropright", "cropbottom", "gain", "blacklevel", "gamma",
+            "grayscale", "bilevel", "chromakey", "embosscolor", "recolortarget", "pict", "r:href", "o:relid", "o:title", "o:movie", "o:oleid" };
+
+        private const string RelationshipsNamespace = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
         internal void Write(StreamWriter sw, string nodeName)
         {
             sw.Write(string.Format("<v:{0}", nodeName));
+            // the root <xml> element does not declare the r prefix, so r:href needs its own declaration
+            bool declaresRelationships = !string.IsNullOrEmpty(this.href);
+            if (declaresRelationships)
+                XmlHelper.WriteAttribute(sw, "xmlns:r", RelationshipsNamespace);
             XmlHelper.WriteAttribute(sw, "id", this.id);
             XmlHelper.WriteAttribute(sw, "src", this.src);
             XmlHelper.WriteAttribute(sw, "cropleft", this.cropleft);
@@ -1645,9 +1655,12 @@ namespace NPOI.OpenXmlFormats.Vml
             XmlHelper.WriteAttribute(sw, "pict", this.pict);
             XmlHelper.WriteAttribute(sw, "r:href", this.href);
             XmlHelper.WriteAttribute(sw, "o:relid", this.relid);
-            XmlHelper.WriteAttribute(sw, "o:title", this.title);
+            // Excel writes o:title="" on pictures; keep it when it was present, even if empty
+            XmlHelper.WriteAttribute(sw, "o:title", this.title, this.title != null);
             XmlHelper.WriteAttribute(sw, "o:movie", this.movie);
             XmlHelper.WriteAttribute(sw, "o:oleid", this.oleid);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw, declaresRelationships ? "r" : null);
             sw.Write("/>");
         }
 
@@ -2294,8 +2307,14 @@ namespace NPOI.OpenXmlFormats.Vml
                 ctObj.extrusionok = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["o:extrusionok"]);
                 ctObj.extrusionokSpecified = true;
             }
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
+
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "id", "o:connecttype", "v", "limo", "textboxrect", "fillok", "strokeok", "shadowok", "arrowok",
+            "gradientshapeok", "textpathok", "insetpenok", "connectlocs", "connectangles", "o:extrusionok" };
 
 
 
@@ -2318,6 +2337,8 @@ namespace NPOI.OpenXmlFormats.Vml
             XmlHelper.WriteAttribute(sw, "connectlocs", this.connectlocs);
             XmlHelper.WriteAttribute(sw, "connectangles", this.connectangles);
             NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "o:extrusionok", this.extrusionok, false, this.extrusionokSpecified);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write(">");
             sw.Write(string.Format("</v:{0}>", nodeName));
         }
@@ -2378,8 +2399,13 @@ namespace NPOI.OpenXmlFormats.Vml
             ctObj.offset2 = XmlHelper.ReadString(node.Attributes["offset2"]);
             ctObj.origin = XmlHelper.ReadString(node.Attributes["origin"]);
             ctObj.matrix = XmlHelper.ReadString(node.Attributes["matrix"]);
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
+
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "id", "on", "type", "obscured", "color", "opacity", "offset", "color2", "offset2", "origin", "matrix" };
 
 
 
@@ -2397,6 +2423,8 @@ namespace NPOI.OpenXmlFormats.Vml
             XmlHelper.WriteAttribute(sw, "offset2", this.offset2);
             XmlHelper.WriteAttribute(sw, "origin", this.origin);
             XmlHelper.WriteAttribute(sw, "matrix", this.matrix);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write(">");
             sw.Write(string.Format("</v:{0}>", nodeName));
         }
@@ -2797,8 +2825,15 @@ namespace NPOI.OpenXmlFormats.Vml
             }
             if (node.Attributes["insetpen"] != null)
                 ctObj.insetpen = NPOI.OpenXmlFormats.Util.XmlHelper.ReadTrueFalse2(node.Attributes["insetpen"]);
+            ctObj.unknownContent = VmlUnknownContent.Read(node, KnownAttributes, null);
             return ctObj;
         }
+
+        private VmlUnknownContent unknownContent;
+
+        private static readonly string[] KnownAttributes = { "id", "on", "weight", "color", "opacity", "linestyle", "miterlimit", "joinstyle", "endcap",
+            "dashstyle", "filltype", "src", "imageaspect", "imagesize", "imagealignshape", "color2", "startarrow", "startarrowwidth",
+            "startarrowlength", "endarrow", "endarrowwidth", "endarrowlength", "insetpen" };
 
 
 
@@ -2841,6 +2876,8 @@ namespace NPOI.OpenXmlFormats.Vml
             if(endarrowlengthFieldSpecified)
                 XmlHelper.WriteAttribute(sw, "endarrowlength", this.endarrowlength.ToString());
             NPOI.OpenXmlFormats.Util.XmlHelper.WriteAttribute(sw, "insetpen", this.insetpen);
+            if (this.unknownContent != null)
+                this.unknownContent.WriteAttributes(sw);
             sw.Write("/>");
         }
 
@@ -6708,9 +6745,12 @@ namespace NPOI.OpenXmlFormats.Vml
             return content.attributes.Count > 0 || content.elements.Count > 0 ? content : null;
         }
 
-        public void WriteAttributes(StreamWriter sw)
+        /// <param name="alreadyDeclaredPrefix">a non-root prefix the caller has already declared on this element, or null</param>
+        public void WriteAttributes(StreamWriter sw, string alreadyDeclaredPrefix = null)
         {
             List<string> declaredPrefixes = null;
+            if (alreadyDeclaredPrefix != null)
+                declaredPrefixes = new List<string> { alreadyDeclaredPrefix };
             foreach (UnknownAttribute attr in attributes)
             {
                 // an attribute from a namespace the root element does not declare needs its own declaration

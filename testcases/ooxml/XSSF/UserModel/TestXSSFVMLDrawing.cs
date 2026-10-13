@@ -21,8 +21,12 @@ using NPOI.XSSF.UserModel;
 using NUnit.Framework;
 using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 
 namespace TestCases.XSSF.UserModel
@@ -358,11 +362,184 @@ namespace TestCases.XSSF.UserModel
             Assert.AreEqual("2", drop.SelectSingleNode("x:ClientData/x:Sel", nsmgr).InnerText);
             Assert.AreEqual("Combo", drop.SelectSingleNode("x:ClientData/x:DropStyle", nsmgr).InnerText);
 
+            // ClientData children keep the source order
+            XmlDocument source = new XmlDocument();
+            source.LoadXml(xml);
+            XmlNodeList sourceClientData = source.SelectNodes("//x:ClientData", nsmgr);
+            XmlNodeList writtenClientData = doc.SelectNodes("//x:ClientData", nsmgr);
+            Assert.AreEqual(sourceClientData.Count, writtenClientData.Count);
+            for (int i = 0; i < sourceClientData.Count; i++)
+            {
+                Assert.AreEqual(ChildNames(sourceClientData[i]), ChildNames(writtenClientData[i]));
+            }
+
             // a second round-trip is stable
             XmlNamespaceManager nsmgr2;
             XSSFVMLDrawing vml2;
             XmlDocument doc2 = RoundTrip(doc.OuterXml, out vml2, out nsmgr2);
             Assert.AreEqual(doc.OuterXml, doc2.OuterXml);
+        }
+
+        private static string ChildNames(XmlNode node)
+        {
+            return string.Join(",", node.ChildNodes.Cast<XmlNode>().Where(n => n.NodeType == XmlNodeType.Element).Select(n => n.LocalName));
+        }
+
+        [Test]
+        public void TestHiddenCommentOmitsVisibleAndShownCommentWritesEmptyVisible()
+        {
+            string xml = VmlHeader + CommentShapetype
+                + "<v:shape id=\"_x0000_s1025\" type=\"#_x0000_t202\" style=\"visibility:visible\">"
+                + "<x:ClientData ObjectType=\"Note\"><x:Anchor>1, 15, 0, 2, 3, 15, 4, 4</x:Anchor><x:Row>0</x:Row><x:Column>0</x:Column><x:Visible/></x:ClientData>"
+                + "</v:shape></xml>";
+
+            XSSFVMLDrawing vml;
+            XmlNamespaceManager nsmgr;
+            XmlDocument doc = RoundTrip(xml, out vml, out nsmgr);
+            XmlNode visible = doc.SelectSingleNode("//x:ClientData/x:Visible", nsmgr);
+            Assert.IsNotNull(visible);
+            Assert.AreEqual(string.Empty, visible.InnerText);
+            Assert.IsTrue(vml.FindCommentShape(0, 0).GetClientDataArray(0).visibleSpecified);
+
+            CT_ClientData clientData = vml.FindCommentShape(0, 0).GetClientDataArray(0);
+            clientData.visible = ST_TrueFalseBlank.@false;
+            doc = Write(vml, out nsmgr);
+            Assert.IsNull(doc.SelectSingleNode("//x:ClientData/x:Visible", nsmgr), "a hidden comment must not carry x:Visible");
+        }
+
+        [TestCase("45431.xlsm")]                          // macro button
+        [TestCase("mv-calculator-final-2-20-2013.xlsm")]  // macro buttons and checkboxes
+        [TestCase("ExcelWithAttachments.xlsm")]           // comments and embedded-object pictures
+        [TestCase("45540_form_Header.xlsx")]              // header picture
+        public void TestRealExcelVmlSurvivesWorkbookRoundTrip(string fileName)
+        {
+            byte[] original;
+            using (Stream input = POIDataSamples.GetSpreadSheetInstance().OpenResourceAsStream(fileName))
+            using (MemoryStream copy = new MemoryStream())
+            {
+                input.CopyTo(copy);
+                original = copy.ToArray();
+            }
+
+            XSSFWorkbook wb = new XSSFWorkbook(new MemoryStream(original));
+            MemoryStream saved = new MemoryStream();
+            wb.Write(saved, true);
+
+            Dictionary<string, string> sourceParts = ReadVmlParts(original);
+            Dictionary<string, string> savedParts = ReadVmlParts(saved.ToArray());
+            Assert.IsNotEmpty(sourceParts);
+            foreach (KeyValuePair<string, string> part in sourceParts)
+            {
+                Assert.IsTrue(savedParts.ContainsKey(part.Key), part.Key + " missing after save");
+                Dictionary<string, HashSet<string>> sourceFacts = VmlFacts(part.Value);
+                Dictionary<string, HashSet<string>> savedFacts = VmlFacts(savedParts[part.Key]);
+                foreach (KeyValuePair<string, HashSet<string>> shape in sourceFacts)
+                {
+                    Assert.IsTrue(savedFacts.ContainsKey(shape.Key), fileName + " " + part.Key + ": " + shape.Key + " missing after save");
+                    List<string> lost = shape.Value.Where(f => !savedFacts[shape.Key].Contains(f)).ToList();
+                    Assert.IsEmpty(lost, fileName + " " + part.Key + ": " + shape.Key + " lost " + string.Join(" | ", lost));
+                }
+            }
+        }
+
+        private static Dictionary<string, string> ReadVmlParts(byte[] package)
+        {
+            Dictionary<string, string> parts = new Dictionary<string, string>();
+            using (ZipArchive zip = new ZipArchive(new MemoryStream(package), ZipArchiveMode.Read))
+            {
+                foreach (ZipArchiveEntry entry in zip.Entries.Where(e => e.FullName.EndsWith(".vml", StringComparison.OrdinalIgnoreCase)))
+                {
+                    using (StreamReader reader = new StreamReader(entry.Open()))
+                    {
+                        parts[entry.FullName] = reader.ReadToEnd();
+                    }
+                }
+            }
+            return parts;
+        }
+
+        /// <summary>
+        /// Every attribute value, leaf text and empty element of each top-level VML element, keyed by its id
+        /// (or o:spid). Whitespace inside values is collapsed, since VML treats it as insignificant.
+        /// </summary>
+        private static Dictionary<string, HashSet<string>> VmlFacts(string vml)
+        {
+            XmlDocument doc = new XmlDocument();
+            doc.LoadXml(vml.Replace("<br>", string.Empty).Replace("</br>", string.Empty));
+            Dictionary<string, HashSet<string>> facts = new Dictionary<string, HashSet<string>>();
+            int index = 0;
+            foreach (XmlNode node in doc.DocumentElement.ChildNodes)
+            {
+                XmlElement element = node as XmlElement;
+                if (element == null)
+                    continue;
+                string key = element.GetAttribute("id");
+                if (key.Length == 0)
+                    key = element.GetAttribute("spid", "urn:schemas-microsoft-com:office:office");
+                if (key.Length == 0)
+                    key = element.LocalName + "#" + index;
+                index++;
+                if (!facts.ContainsKey(key))
+                    facts[key] = new HashSet<string>();
+                CollectFacts(element, string.Empty, facts[key]);
+            }
+            return facts;
+        }
+
+        private static void CollectFacts(XmlElement element, string path, HashSet<string> facts)
+        {
+            string here = path + "/" + element.NamespaceURI + ":" + element.LocalName;
+            bool hasChildElements = element.ChildNodes.Cast<XmlNode>().Any(n => n.NodeType == XmlNodeType.Element);
+            foreach (XmlAttribute attr in element.Attributes)
+            {
+                if (attr.Prefix == "xmlns" || attr.Name == "xmlns")
+                    continue;
+                facts.Add(here + "@" + attr.NamespaceURI + ":" + attr.LocalName + "=" + Collapse(attr.Value));
+            }
+            if (!hasChildElements)
+                facts.Add(here + "#" + Collapse(element.InnerText));
+            foreach (XmlNode child in element.ChildNodes)
+            {
+                if (child is XmlElement)
+                    CollectFacts((XmlElement)child, here, facts);
+            }
+        }
+
+        private static string Collapse(string value)
+        {
+            return Regex.Replace(value, @"\s+", " ").Trim();
+        }
+
+        [Test]
+        public void TestUnmodelledAttributesOnShapeChildrenSurviveRoundTrip()
+        {
+            string xml = VmlHeader
+                + "<v:shapetype id=\"_x0000_t75\" coordsize=\"21600,21600\" o:spt=\"75\" path=\"m@4@5l@4@11@9@11@9@5xe\">"
+                + "<v:stroke joinstyle=\"miter\" o:forcedash=\"t\"/><v:path gradientshapeok=\"t\" o:connecttype=\"rect\" o:extrusionok=\"f\" o:custom=\"keep\"/>"
+                + "<o:lock v:ext=\"edit\" aspectratio=\"t\" o:custom=\"lock\"/></v:shapetype>"
+                + "<v:shape id=\"_x0000_s1025\" type=\"#_x0000_t75\" style=\"position:absolute\">"
+                + "<v:shadow on=\"t\" color=\"black\" o:custom=\"shadow\"/>"
+                + "<v:imagedata xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" o:relid=\"rId1\" o:title=\"logo\""
+                + " r:href=\"rId2\" r:pict=\"rId3\" o:detectmouseclick=\"t\"/>"
+                + "</v:shape></xml>";
+
+            XSSFVMLDrawing vml;
+            XmlNamespaceManager nsmgr;
+            // RoundTrip reloads the output with XmlDocument, so an undeclared r: prefix would throw here
+            XmlDocument doc = RoundTrip(xml, out vml, out nsmgr);
+            const string O = "urn:schemas-microsoft-com:office:office";
+            const string R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+
+            Assert.AreEqual("t", ((XmlElement)doc.SelectSingleNode("//v:stroke", nsmgr)).GetAttribute("forcedash", O));
+            Assert.AreEqual("keep", ((XmlElement)doc.SelectSingleNode("//v:shapetype/v:path", nsmgr)).GetAttribute("custom", O));
+            Assert.AreEqual("lock", ((XmlElement)doc.SelectSingleNode("//o:lock", nsmgr)).GetAttribute("custom", O));
+            Assert.AreEqual("shadow", ((XmlElement)doc.SelectSingleNode("//v:shadow", nsmgr)).GetAttribute("custom", O));
+
+            XmlElement imagedata = (XmlElement)doc.SelectSingleNode("//v:imagedata", nsmgr);
+            Assert.AreEqual("rId1", imagedata.GetAttribute("relid", O));
+            Assert.AreEqual("rId2", imagedata.GetAttribute("href", R));
+            Assert.AreEqual("rId3", imagedata.GetAttribute("pict", R));
+            Assert.AreEqual("t", imagedata.GetAttribute("detectmouseclick", O));
         }
 
         [Test]
