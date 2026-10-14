@@ -24,6 +24,7 @@ namespace NPOI.SS.Format
     using System.Text.RegularExpressions;
     using System.Text;
     using SixLabors.ImageSharp;
+    using SixLabors.ImageSharp.PixelFormats;
     using NPOI.Util;
 
     /**
@@ -85,7 +86,7 @@ namespace NPOI.SS.Format
                 if (name.Equals(name.ToUpper()))
                 {
                     byte[] rgb = hc.RGB;
-                    Color c = Color.FromRgb(rgb[0], rgb[1], rgb[2]);
+                    Color c = POIUtils.ToColor(new Rgb24(rgb[0], rgb[1], rgb[2]));
                     if (!NAMED_COLORS.ContainsKey(name))
                     {
                         NAMED_COLORS.Add(name, c);
@@ -283,8 +284,8 @@ namespace NPOI.SS.Format
         {
             String cdesc = m.Groups[(COLOR_GROUP)].Value.ToUpper();
             if (cdesc == null || cdesc.Length == 0)
-                return POIUtils.Color_Empty;
-            Color c = POIUtils.Color_Empty;
+                return POIUtils.ToColor(POIUtils.Color_Empty);
+            Color c = POIUtils.ToColor(POIUtils.Color_Empty);
             if (NAMED_COLORS.ContainsKey(cdesc))
                 c = NAMED_COLORS[(cdesc)];
             //if (c == null)
@@ -488,9 +489,9 @@ namespace NPOI.SS.Format
             else
             {
                 text = format.SimpleFormat(value);
-                textColor = POIUtils.Color_Empty;
+                textColor = POIUtils.ToColor(POIUtils.Color_Empty);
             }
-            return new CellFormatResult(applies, text, textColor);
+            return new CellFormatResult(applies, text, POIUtils.ToRgb24(textColor));
         }
 
         /**

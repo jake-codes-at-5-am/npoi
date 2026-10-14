@@ -125,7 +125,11 @@ namespace NPOI.XSSF.UserModel
         ) : this() {
             IFont   ift = ((XSSFWorkbook)Sheet.Workbook).GetStylesSource().GetFontAt(0);
             Font    ft  = SheetUtil.IFont2Font(ift);
+#if NET8_0_OR_GREATER
+            var     rt  = TextMeasurer.MeasureBounds("0", new TextOptions(ft));   // MeasureSize was removed in SixLabors.Fonts 3.x
+#else
             var     rt  = TextMeasurer.MeasureSize("0", new TextOptions(ft));
+#endif
             double  MDW = rt.Width + 1;                                                     //MaximumDigitWidth
 
             double colwidth;                                                                //default or base column width (in pixel)

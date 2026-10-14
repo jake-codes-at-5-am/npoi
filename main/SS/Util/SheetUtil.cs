@@ -957,7 +957,7 @@ namespace NPOI.SS.Util
 
             try
             {
-                contentSize = TextMeasurer.MeasureSize(contentToMeasure, cacheOptions);
+                contentSize = NPOI.Util.POIUtils.MeasureTextSize(contentToMeasure, cacheOptions);
 
                 // Validate measurement results
                 if (contentSize.Width <= 0 || contentSize.Height <= 0)
@@ -1471,7 +1471,7 @@ namespace NPOI.SS.Util
             // Try to find font in system fonts with improved fallback logic
 
             // First, try the requested font
-            if (SystemFonts.TryGet(cacheKey.FontName, CultureInfo.CurrentCulture, out var fontFamily))
+            if (NPOI.Util.POIUtils.TryGetSystemFont(cacheKey.FontName, out var fontFamily))
             {
                 return new Font(fontFamily, cacheKey.FontHeightInPoints, cacheKey.Style);
             }
@@ -1481,7 +1481,7 @@ namespace NPOI.SS.Util
 
             foreach (var fallbackFontName in fallbackFonts)
             {
-                if (SystemFonts.TryGet(fallbackFontName, CultureInfo.CurrentCulture, out fontFamily))
+                if (NPOI.Util.POIUtils.TryGetSystemFont(fallbackFontName, out fontFamily))
                 {
                     return new Font(fontFamily, cacheKey.FontHeightInPoints, cacheKey.Style);
                 }
@@ -1549,7 +1549,7 @@ namespace NPOI.SS.Util
         {
             var key = KeyFrom(font);
             return _spaceWidths.GetOrAdd(key,
-                _ => TextMeasurer.MeasureSize(" ", new TextOptions(font) { Dpi = dpi }).Width);
+                _ => NPOI.Util.POIUtils.MeasureTextSize(" ", new TextOptions(font) { Dpi = dpi }).Width);
         }
 
         private static TextOptions GetTextOptions(Font font)
@@ -1562,7 +1562,7 @@ namespace NPOI.SS.Util
         {
             var key = KeyFrom(font);
             return _defaultCharWdths.GetOrAdd(key,
-                _ => TextMeasurer.MeasureSize(defaultChar.ToString(), new TextOptions(font) { Dpi = dpi }).Width);
+                _ => NPOI.Util.POIUtils.MeasureTextSize(defaultChar.ToString(), new TextOptions(font) { Dpi = dpi }).Width);
         }
 
         private static double GetMergedPixelWidth(ISheet sheet, int firstRow, int firstColumn, int lastRow, int lastColumn)
