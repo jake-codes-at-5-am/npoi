@@ -35,7 +35,7 @@ namespace NPOI.SS.Util
 
         public static Size GetImageDimension(Stream is1)
         {
-            using (Image img = Image.Load(is1))
+            using (Image img = IronSoftware.Drawing.ImageSharpLoader.Load(is1))
             {
                 //return img.Size;
                 int[] dpi = GetResolution(img);
@@ -70,7 +70,7 @@ namespace NPOI.SS.Util
                 case PictureType.DIB:
                     //we can calculate the preferred size only for JPEG, PNG and BMP
                     //other formats like WMF, EMF and PICT are not supported in Java
-                    using (Image img = Image.Load(is1))
+                    using (Image img = IronSoftware.Drawing.ImageSharpLoader.Load(is1))
                     {
                         int[] dpi = GetResolution(img);
 
