@@ -2,7 +2,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
-		<TargetFrameworks>netstandard2.0;netstandard2.1;net6.0;net8.0</TargetFrameworks>
+		<TargetFrameworks>net462;netstandard2.0;netstandard2.1;net6.0;net8.0</TargetFrameworks>
 		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
 		<AssemblyName>NPOI</AssemblyName>
 		<RootNamespace>NPOI</RootNamespace>
@@ -10,6 +10,13 @@
 		<AssemblyOriginatorKeyFile>../npoi.snk</AssemblyOriginatorKeyFile>
 		<OutputPath>../solution/$(Configuration)/</OutputPath>
 		<LangVersion>latest</LangVersion>
+	</PropertyGroup>
+
+	<PropertyGroup>
+		<!-- IronSoftware.System.Drawing for every target. Its lib/net462 is built on SkiaSharp and has no
+		     SixLabors.ImageSharp. IronXL gets Drawing through this project, so this is the only place the
+		     version is set (plus the dependency groups in IronXL.nuspec). -->
+		<IronDrawingVersion>2026.3.23-prerelease</IronDrawingVersion>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -20,7 +27,7 @@
 	<ItemGroup>
 		<PackageReference Include="Enums.NET" Version="5.0.0" />
 		<PackageReference Include="ExtendedNumerics.BigDecimal" Version="2025.1004.0.247" />
-        <PackageReference Include="IronSoftware.System.Drawing" Version="2026.11.4" />
+        <PackageReference Include="IronSoftware.System.Drawing" Version="$(IronDrawingVersion)" />
 		<PackageReference Include="MathNet.Numerics.Signed" Version="5.0.0" />
 		<PackageReference Include="Microsoft.IO.RecyclableMemoryStream" Version="3.0.1" />
 		<PackageReference Include="BouncyCastle.Cryptography" Version="2.4.0" />

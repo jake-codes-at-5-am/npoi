@@ -21,7 +21,11 @@ using NPOI.XSSF;
 using NPOI.XSSF.Model;
 using NPOI.XSSF.UserModel;
 using NUnit.Framework;
+#if NETFRAMEWORK
+using Color = IronSoftware.Drawing.Color;
+#else
 using SixLabors.ImageSharp;
+#endif
 using System;
 
 namespace TestCases.XSSF.UserModel

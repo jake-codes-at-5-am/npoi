@@ -22,7 +22,12 @@ namespace NPOI.DDF
     using NPOI.Util;
     using ICSharpCode.SharpZipLib.Zip.Compression;
     using ICSharpCode.SharpZipLib.Zip.Compression.Streams;
+#if NETFRAMEWORK
+    using Rectangle = IronSoftware.Drawing.Rectangle;
+    using Size = IronSoftware.Drawing.Size;
+#else
     using SixLabors.ImageSharp;
+#endif
 
     /// <summary>
     /// @author Daniel Noll

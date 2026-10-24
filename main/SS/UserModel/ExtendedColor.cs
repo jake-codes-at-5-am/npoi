@@ -21,7 +21,9 @@ namespace NPOI.SS.UserModel
     using NPOI.HSSF.Util;
     using NPOI.SS.UserModel;
     using NPOI.Util;
+#if !NETFRAMEWORK
     using SixLabors.ImageSharp.PixelFormats;
+#endif
 
     /**
      * Represents a XSSF-style color (based on either a

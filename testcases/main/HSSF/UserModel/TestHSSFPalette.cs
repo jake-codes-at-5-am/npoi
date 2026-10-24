@@ -27,7 +27,9 @@ namespace TestCases.HSSF.UserModel
     using TestCases.HSSF;
     using NUnit.Framework;
     using NPOI.SS.UserModel;
-    using SixLabors.ImageSharp.PixelFormats;
+    #if !NETFRAMEWORK
+using SixLabors.ImageSharp.PixelFormats;
+#endif
 
     /**
      * @author Brian Sanders (bsanders at risklabs dot com)

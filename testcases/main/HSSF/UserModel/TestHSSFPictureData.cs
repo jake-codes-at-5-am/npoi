@@ -26,7 +26,11 @@ namespace TestCases.HSSF.UserModel
     using TestCases.HSSF;
     using NPOI.SS.UserModel;
     using System.Collections.Generic;
+#if NETFRAMEWORK
+    using Image = IronSoftware.Drawing.AnyBitmap;
+#else
     using SixLabors.ImageSharp;
+#endif
 
 
     /**
@@ -39,6 +43,15 @@ namespace TestCases.HSSF.UserModel
     [TestFixture]
     public class TestHSSFPictureData
     {
+
+        private static Image LoadImage(Stream stream)
+        {
+#if NETFRAMEWORK
+            return Image.FromStream(stream);
+#else
+            return Image.Load(stream);
+#endif
+        }
 
         [Test]
         public void TestPictures()
@@ -56,7 +69,7 @@ namespace TestCases.HSSF.UserModel
                 if (ext.Equals("jpeg"))
                 {
                     //try to read image data using javax.imageio.* (JDK 1.4+)
-                    Image jpg = Image.Load(new MemoryStream(data));
+                    Image jpg = LoadImage(new MemoryStream(data));
                     Assert.IsNotNull(jpg);
                     Assert.AreEqual(192, jpg.Width);
                     Assert.AreEqual(176, jpg.Height);
@@ -64,7 +77,7 @@ namespace TestCases.HSSF.UserModel
                 else if (ext.Equals("png"))
                 {
                     //try to read image data using javax.imageio.* (JDK 1.4+)
-                    Image png = Image.Load(new MemoryStream(data));
+                    Image png = LoadImage(new MemoryStream(data));
                     Assert.IsNotNull(png);
                     Assert.AreEqual(300, png.Width);
                     Assert.AreEqual(300, png.Height);
@@ -94,7 +107,7 @@ namespace TestCases.HSSF.UserModel
             byte[] data = pict.Data;
             using (MemoryStream ms = new MemoryStream(data))
             {
-                Image png = Image.Load(ms);
+                Image png = LoadImage(ms);
                 Assert.IsNotNull(png);
                 Assert.AreEqual(78, png.Width);
                 Assert.AreEqual(76, png.Height);

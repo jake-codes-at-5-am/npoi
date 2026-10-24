@@ -24,7 +24,11 @@ using NPOI.XSSF.Model;
 using NPOI.XSSF.UserModel;
 using NPOI.XSSF.UserModel.Extensions;
 using NUnit.Framework;
+#if NETFRAMEWORK
+using Color = IronSoftware.Drawing.Color;
+#else
 using SixLabors.ImageSharp;
+#endif
 
 namespace TestCases.XSSF.UserModel
 {
@@ -421,7 +425,7 @@ namespace TestCases.XSSF.UserModel
             cellStyle.SetBottomBorderColor(clr);
             Assert.AreEqual(clr.GetCTColor().ToString(), cellStyle.BottomBorderXSSFColor.GetCTColor().ToString());
             byte[] rgb = cellStyle.BottomBorderXSSFColor.RGB;
-            Assert.AreEqual(Color.Cyan, Color.FromRgb((byte)(rgb[0] & 0xFF), (byte)(rgb[1] & 0xFF), (byte)(rgb[2] & 0xFF)));
+            Assert.AreEqual(Color.Cyan, TestColors.FromRgb((byte)(rgb[0] & 0xFF), (byte)(rgb[1] & 0xFF), (byte)(rgb[2] & 0xFF)));
             //another border was Added to the styles table
             Assert.AreEqual(num+1, stylesTable.GetBorders().Count);
 
@@ -463,7 +467,7 @@ namespace TestCases.XSSF.UserModel
             cellStyle.SetTopBorderColor(clr);
             Assert.AreEqual(clr.GetCTColor().ToString(), cellStyle.TopBorderXSSFColor.GetCTColor().ToString());
             byte[] rgb = cellStyle.TopBorderXSSFColor.RGB;
-            Assert.AreEqual(Color.Cyan, Color.FromRgb(rgb[0], rgb[1], rgb[2]));
+            Assert.AreEqual(Color.Cyan, TestColors.FromRgb(rgb[0], rgb[1], rgb[2]));
             //another border was added to the styles table
             Assert.AreEqual(num, stylesTable.GetBorders().Count);
 
@@ -505,7 +509,7 @@ namespace TestCases.XSSF.UserModel
             cellStyle.SetLeftBorderColor(clr);
             Assert.AreEqual(clr.GetCTColor().ToString(), cellStyle.LeftBorderXSSFColor.GetCTColor().ToString());
             byte[] rgb = cellStyle.LeftBorderXSSFColor.RGB;
-            Assert.AreEqual(Color.Cyan, Color.FromRgb((byte)(rgb[0] & 0xFF), (byte)(rgb[1] & 0xFF), (byte)(rgb[2] & 0xFF)));
+            Assert.AreEqual(Color.Cyan, TestColors.FromRgb((byte)(rgb[0] & 0xFF), (byte)(rgb[1] & 0xFF), (byte)(rgb[2] & 0xFF)));
             //another border was Added to the styles table
             Assert.AreEqual(num, stylesTable.GetBorders().Count);
 
@@ -547,7 +551,7 @@ namespace TestCases.XSSF.UserModel
             cellStyle.SetRightBorderColor(clr);
             Assert.AreEqual(clr.GetCTColor().ToString(), cellStyle.RightBorderXSSFColor.GetCTColor().ToString());
             byte[] rgb = cellStyle.RightBorderXSSFColor.RGB;
-            Assert.AreEqual(Color.Cyan, Color.FromRgb((byte)(rgb[0] & 0xFF), (byte)(rgb[1] & 0xFF), (byte)(rgb[2] & 0xFF)));
+            Assert.AreEqual(Color.Cyan, TestColors.FromRgb((byte)(rgb[0] & 0xFF), (byte)(rgb[1] & 0xFF), (byte)(rgb[2] & 0xFF)));
             //another border was Added to the styles table
             Assert.AreEqual(num, stylesTable.GetBorders().Count);
 
@@ -589,7 +593,7 @@ namespace TestCases.XSSF.UserModel
             cellStyle.SetFillBackgroundColor(clr); // TODO this testcase assumes that cellStyle creates a new CT_Fill, but the implementation changes the existing style. - do not know whats right 8-(
             Assert.AreEqual(clr.GetCTColor().ToString(), ((XSSFColor)cellStyle.FillBackgroundColorColor).GetCTColor().ToString());
             byte[] rgb = ((XSSFColor)cellStyle.FillBackgroundColorColor).RGB;
-            Assert.AreEqual(Color.Cyan, Color.FromRgb((byte)(rgb[0] & 0xFF), (byte)(rgb[1] & 0xFF), (byte)(rgb[2] & 0xFF)));
+            Assert.AreEqual(Color.Cyan, TestColors.FromRgb((byte)(rgb[0] & 0xFF), (byte)(rgb[1] & 0xFF), (byte)(rgb[2] & 0xFF)));
             //another border was added to the styles table
             Assert.AreEqual(num + 1, stylesTable.GetFills().Count);
 

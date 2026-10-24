@@ -21,7 +21,12 @@ namespace NPOI.SS.Util
     using NPOI.HSSF.UserModel;
     using NPOI.SS.UserModel;
     using NPOI.Util;
+#if NETFRAMEWORK
+    using Image = IronSoftware.Drawing.AnyBitmap;
+    using Size = IronSoftware.Drawing.Size;
+#else
     using SixLabors.ImageSharp;
+#endif
 
     /**
      * @author Yegor Kozlov
@@ -35,7 +40,7 @@ namespace NPOI.SS.Util
 
         public static Size GetImageDimension(Stream is1)
         {
-            using (Image img = IronSoftware.Drawing.ImageSharpLoader.Load(is1))
+            using (Image img = LoadImage(is1))
             {
                 //return img.Size;
                 int[] dpi = GetResolution(img);
@@ -70,7 +75,7 @@ namespace NPOI.SS.Util
                 case PictureType.DIB:
                     //we can calculate the preferred size only for JPEG, PNG and BMP
                     //other formats like WMF, EMF and PICT are not supported in Java
-                    using (Image img = IronSoftware.Drawing.ImageSharpLoader.Load(is1))
+                    using (Image img = LoadImage(is1))
                     {
                         int[] dpi = GetResolution(img);
 
@@ -103,7 +108,22 @@ namespace NPOI.SS.Util
          */
         public static int[] GetResolution(Image r)
         {
+#if NETFRAMEWORK
+            return new int[] { (int)r.HorizontalResolution, (int)r.VerticalResolution };
+#else
             return new int[] { (int)r.Metadata.HorizontalResolution, (int)r.Metadata.VerticalResolution };
+#endif
+        }
+
+        // .NET Framework decodes with IronSoftware.Drawing's SkiaSharp build (no ImageSharp). Other targets go
+        // through ImageSharpLoader, which rejects malformed BigTIFF data before ImageSharp decodes it (CVE-2026-106116).
+        private static Image LoadImage(Stream is1)
+        {
+#if NETFRAMEWORK
+            return Image.FromStream(is1);
+#else
+            return IronSoftware.Drawing.ImageSharpLoader.Load(is1);
+#endif
         }
 
         /**

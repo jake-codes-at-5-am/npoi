@@ -19,8 +19,10 @@ namespace TestCases.XSSF.UserModel
     using NPOI.Util;
     using NPOI.XSSF.UserModel;
     using NUnit.Framework;
+#if !NETFRAMEWORK
     using SixLabors.ImageSharp;
     using SixLabors.ImageSharp.PixelFormats;
+#endif
     using System.Collections.Generic;
 
     [TestFixture]

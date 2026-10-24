@@ -26,7 +26,11 @@ namespace NPOI.XSSF.Streaming
     using NPOI.OpenXmlFormats.Spreadsheet;
     using NPOI.OpenXmlFormats.Dml;
     using NPOI.OpenXmlFormats.Dml.Spreadsheet;
+#if NETFRAMEWORK
+    using Size = IronSoftware.Drawing.Size;
+#else
     using SixLabors.ImageSharp;
+#endif
 
     /// <summary>
     /// <para>

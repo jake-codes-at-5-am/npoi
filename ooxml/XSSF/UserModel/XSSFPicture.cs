@@ -25,7 +25,11 @@ using NPOI.SS.UserModel;
 using NPOI.Util;
 using System.Xml;
 using NPOI.SS.Util;
+#if NETFRAMEWORK
+using Size = IronSoftware.Drawing.Size;
+#else
 using SixLabors.ImageSharp;
+#endif
 
 namespace NPOI.XSSF.UserModel
 {
