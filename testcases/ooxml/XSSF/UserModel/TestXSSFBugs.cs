@@ -32,7 +32,11 @@ using NPOI.XSSF.UserModel;
 using NPOI.XSSF.UserModel.Extensions;
 using NUnit.Framework;
 using NUnit.Framework.Constraints;
+#if NETFRAMEWORK
+using Color = IronSoftware.Drawing.Color;
+#else
 using SixLabors.ImageSharp;
+#endif
 using System;
 using System.Collections.Generic;
 using System.Globalization;

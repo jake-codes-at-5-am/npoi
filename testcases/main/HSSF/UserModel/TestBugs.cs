@@ -45,7 +45,11 @@ namespace TestCases.HSSF.UserModel
     using NPOI.HSSF.Record.Crypto;
     using NPOI.HSSF;
     using System.Net;
+#if NETFRAMEWORK
+    using Image = IronSoftware.Drawing.AnyBitmap;
+#else
     using SixLabors.ImageSharp;
+#endif
 
     /**
      * Testcases for bugs entered in bugzilla
@@ -3356,6 +3360,15 @@ namespace TestCases.HSSF.UserModel
         }
 
 
+        private static Image LoadImage(Stream stream)
+        {
+#if NETFRAMEWORK
+            return Image.FromStream(stream);
+#else
+            return Image.Load(stream);
+#endif
+        }
+
         [Test]
         public void Test46515()
         {
@@ -3368,7 +3381,7 @@ namespace TestCases.HSSF.UserModel
             {
                 WebClient client = new WebClient();
                 MemoryStream ms = new MemoryStream(client.DownloadData(structURL));
-                bimage = Image.Load(ms);
+                bimage = LoadImage(ms);
                 ms.Close();
             }
             catch (WebException)
@@ -3379,7 +3392,11 @@ namespace TestCases.HSSF.UserModel
             // Convert BufferedImage to byte[]
             ByteArrayOutputStream imageBAOS = new ByteArrayOutputStream();
             //ImageIO.write(bimage, "jpeg", imageBAOS);
+#if NETFRAMEWORK
+            bimage.ExportStream(imageBAOS, IronSoftware.Drawing.AnyBitmap.ImageFormat.Jpeg);
+#else
             bimage.SaveAsJpeg(imageBAOS);
+#endif
             imageBAOS.Flush();
             byte[] imageBytes = imageBAOS.ToByteArray();
             imageBAOS.Close();

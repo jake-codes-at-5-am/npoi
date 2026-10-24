@@ -18,8 +18,12 @@ using NPOI.POIFS.FileSystem;
 using System.Collections;
 using System.Collections.Generic;
 using System;
+#if NETFRAMEWORK
+using Color = IronSoftware.Drawing.Color;
+#else
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+#endif
 
 namespace NPOI.Util
 {
@@ -103,8 +107,14 @@ namespace NPOI.Util
 
         // Color <-> Rgb24 implicit conversions were removed in SixLabors.ImageSharp 4.x; the explicit
         // FromPixel/ToPixel calls compile and behave identically on every ImageSharp version we target.
+#if NETFRAMEWORK
+        // .NET Framework has no ImageSharp: Color is IronSoftware.Drawing.Color (a class) and Rgb24 is NPOI.Util.Rgb24.
+        internal static Color ToColor(Rgb24 pixel) { return Color.FromArgb(pixel.R, pixel.G, pixel.B); }
+        internal static Rgb24 ToRgb24(Color color) { return color is null ? Color_Empty : new Rgb24(color.R, color.G, color.B); }
+#else
         internal static Color ToColor(Rgb24 pixel) { return Color.FromPixel(pixel); }
         internal static Rgb24 ToRgb24(Color color) { return color.ToPixel<Rgb24>(); }
+#endif
 
         // SixLabors.Fonts 3.x (used with ImageSharp 4.x on net8.0) removed TextMeasurer.MeasureSize and the
         // culture overload of SystemFonts.TryGet. MeasureBounds returns the same rectangle MeasureSize did.

@@ -15,7 +15,11 @@
    limitations under the License.
 ==================================================================== */
 
+#if NETFRAMEWORK
+using Size = IronSoftware.Drawing.Size;
+#else
 using SixLabors.ImageSharp;
+#endif
 namespace NPOI.SS.UserModel
 {
     public enum PictureType : int

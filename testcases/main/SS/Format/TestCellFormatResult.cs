@@ -18,7 +18,11 @@ namespace TestCases.SS.Format
 {
     using NPOI.SS.Format;
     using NUnit.Framework;
-    using SixLabors.ImageSharp.PixelFormats;
+    #if NETFRAMEWORK
+using NPOI.Util;
+#else
+using SixLabors.ImageSharp.PixelFormats;
+#endif
     using System;
 
     [TestFixture]

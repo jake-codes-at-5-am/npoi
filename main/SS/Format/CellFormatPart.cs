@@ -23,8 +23,12 @@ namespace NPOI.SS.Format
     using System.Collections;
     using System.Text.RegularExpressions;
     using System.Text;
+#if NETFRAMEWORK
+    using Color = IronSoftware.Drawing.Color;
+#else
     using SixLabors.ImageSharp;
     using SixLabors.ImageSharp.PixelFormats;
+#endif
     using NPOI.Util;
 
     /**

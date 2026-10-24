@@ -25,8 +25,12 @@ namespace TestCases.HSSF.UserModel
 
 
     using NUnit.Framework;
+#if NETFRAMEWORK
+    using Color = IronSoftware.Drawing.Color;
+#else
     using SixLabors.ImageSharp;
     using SixLabors.ImageSharp.PixelFormats;
+#endif
 
 
     /**

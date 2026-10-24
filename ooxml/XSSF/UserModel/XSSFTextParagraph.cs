@@ -21,7 +21,9 @@ using System;
 using System.Text;
 using NPOI.XSSF.Model;
 using NPOI.Util;
+#if !NETFRAMEWORK
 using SixLabors.ImageSharp.PixelFormats;
+#endif
 
 namespace NPOI.XSSF.UserModel
 {

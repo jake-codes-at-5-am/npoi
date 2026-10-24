@@ -21,8 +21,12 @@ using System.Text;
 using NPOI.Util;
 using NPOI.SS.UserModel;
 using NPOI.OpenXmlFormats.Spreadsheet;
+#if NETFRAMEWORK
+using Color = IronSoftware.Drawing.Color;
+#else
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
+#endif
 
 namespace NPOI.XSSF.UserModel
 {
@@ -54,8 +58,12 @@ namespace NPOI.XSSF.UserModel
         public XSSFColor(Color clr)
             : this()
         {
+#if NETFRAMEWORK
+            ctColor.SetRgb(clr.R, clr.G, clr.B);
+#else
             var c = clr.ToPixel<Rgb24>();
             ctColor.SetRgb(c.R, c.G, c.B);
+#endif
         }
 
         public XSSFColor(Rgb24 clr)

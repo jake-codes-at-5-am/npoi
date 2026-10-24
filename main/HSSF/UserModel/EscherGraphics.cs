@@ -21,8 +21,14 @@ namespace NPOI.HSSF.UserModel
     using NPOI.HSSF.Util;
     using NPOI.Util;
     using NPOI.SS.UserModel;
+#if NETFRAMEWORK
+    using Color = IronSoftware.Drawing.Color;
+    using Image = IronSoftware.Drawing.AnyBitmap;
+    using Rectangle = IronSoftware.Drawing.Rectangle;
+#else
     using SixLabors.ImageSharp;
     using SixLabors.ImageSharp.PixelFormats;
+#endif
     using SixLabors.Fonts;
 
     /**
@@ -447,7 +453,11 @@ namespace NPOI.HSSF.UserModel
         {
             get
             {
+#if NETFRAMEWORK
+                return new Rectangle(0, 0, 0, 0);
+#else
                 return Rectangle.Empty;
+#endif
             }
         }
 

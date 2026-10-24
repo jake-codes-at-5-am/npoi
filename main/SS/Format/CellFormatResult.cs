@@ -17,8 +17,12 @@
 namespace NPOI.SS.Format
 {
     using NPOI.Util;
+#if NETFRAMEWORK
+    using Color = IronSoftware.Drawing.Color;
+#else
     using SixLabors.ImageSharp;
     using SixLabors.ImageSharp.PixelFormats;
+#endif
     using System;
 
 

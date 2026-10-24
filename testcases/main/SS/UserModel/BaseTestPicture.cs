@@ -21,7 +21,13 @@ using NPOI.Util;
 using NPOI.SS.Util;
 using System.IO;
 using TestCases.HSSF;
+#if NETFRAMEWORK
+using Image = IronSoftware.Drawing.AnyBitmap;
+using Point = IronSoftware.Drawing.Point;
+using Size = IronSoftware.Drawing.Size;
+#else
 using SixLabors.ImageSharp;
+#endif
 
 namespace TestCases.SS.UserModel
 {
@@ -134,7 +140,11 @@ namespace TestCases.SS.UserModel
 
         private static Point GetImageSize(byte[] image)
         {
+#if NETFRAMEWORK
+            Image img = Image.FromStream(new MemoryStream(image));
+#else
             Image img = Image.Load(new MemoryStream(image));
+#endif
 
             Assert.IsNotNull(img);
 
